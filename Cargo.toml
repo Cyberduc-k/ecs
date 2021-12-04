@@ -1,0 +1,11 @@
+[package]
+name = "ecs"
+version = "0.1.0"
+authors = ["Fluix"]
+edition = "2018"
+
+[[bin]]
+name = "test"
+path = "src/test.rs"
+
+[dependencies]
