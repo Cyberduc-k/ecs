@@ -1,8 +1,8 @@
-mod vec;
 mod single;
+mod vec;
 
-pub use vec::VecStorage;
 pub use single::SingleStorage;
+pub use vec::VecStorage;
 
 use crate::archetype::ArchetypeIndex;
 use crate::component::{Component, ComponentIndex};
@@ -15,8 +15,16 @@ pub trait AnyStorage {
 }
 
 pub trait Storage<'a, T: Component>: AnyStorage + Default {
+    type Iter: Iterator<Item = &'a T>;
+    type IterMut: Iterator<Item = &'a mut T>;
+
+    fn get(&'a self, component: ComponentIndex) -> Option<&'a T>;
+    fn get_mut(&'a mut self, component: ComponentIndex) -> Option<&'a mut T>;
     fn extend<I: IntoIterator<Item = T>>(&mut self, items: I);
     fn remove(&mut self, component: ComponentIndex) -> Option<T>;
+
+    fn iter(&'a self) -> Self::Iter;
+    fn iter_mut(&'a mut self) -> Self::IterMut;
 }
 
 pub struct ArchetypeStorage<T: Component> {
@@ -32,13 +40,7 @@ pub trait AnyArchetypeStorage: Any {
 
 #[derive(Default)]
 pub struct Components {
-    storages: HashMap<TypeId, Box<dyn AnyArchetypeStorage>>
-}
-
-impl<T: Component> ArchetypeStorage<T> {
-    pub fn any() -> Box<dyn AnyArchetypeStorage> {
-        Box::new(Self::default())
-    }
+    storages: HashMap<TypeId, Box<dyn AnyArchetypeStorage>>,
 }
 
 impl<T: Component> Default for ArchetypeStorage<T> {
@@ -51,6 +53,25 @@ impl<T: Component> Default for ArchetypeStorage<T> {
 }
 
 impl<T: Component> ArchetypeStorage<T> {
+    pub fn any() -> Box<dyn AnyArchetypeStorage> {
+        Box::new(Self::default())
+    }
+
+    pub fn get(&self, archetype: ArchetypeIndex) -> Option<&T::Storage> {
+        let index = self.index[archetype.0 as usize];
+        self.data.get(index)
+    }
+
+    pub fn get_mut(&mut self, archetype: ArchetypeIndex) -> Option<&mut T::Storage> {
+        let index = self.index[archetype.0 as usize];
+        self.data.get_mut(index)
+    }
+
+    pub unsafe fn get_mut_unchecked(&self, archetype: ArchetypeIndex) -> Option<&mut T::Storage> {
+        let index = self.index[archetype.0 as usize];
+        std::mem::transmute(self.data.get(index))
+    }
+
     pub fn extend<I: IntoIterator<Item = T>>(&mut self, archetype: ArchetypeIndex, items: I) {
         let index = self.index[archetype.0 as usize];
         self.data[index].extend(items);
@@ -89,11 +110,15 @@ impl Components {
     }
 
     pub fn get<T: Component>(&self) -> Option<&ArchetypeStorage<T>> {
-        self.storages.get(&TypeId::of::<T>()).and_then(|s| s.downcast_ref::<T>())
+        self.storages
+            .get(&TypeId::of::<T>())
+            .and_then(|s| s.downcast_ref::<T>())
     }
 
     pub fn get_mut<T: Component>(&mut self) -> Option<&mut ArchetypeStorage<T>> {
-        self.storages.get_mut(&TypeId::of::<T>()).and_then(|s| s.downcast_mut::<T>())
+        self.storages
+            .get_mut(&TypeId::of::<T>())
+            .and_then(|s| s.downcast_mut::<T>())
     }
 
     pub fn get_any(&self, ty: TypeId) -> Option<&dyn AnyArchetypeStorage> {

@@ -10,7 +10,7 @@ pub struct Entity(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EntityData(pub(crate) ArchetypeIndex, pub(crate) ComponentIndex);
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct EntityMap {
     entities: Vec<MaybeUninit<EntityData>>,
     free: HashSet<u64>,
@@ -56,6 +56,7 @@ impl EntityMap {
             let data = EntityData(archetype, ComponentIndex(base + i as u32));
 
             if idx >= self.entities.len() {
+                self.free.extend(self.entities.len() as u64..idx as u64 + 1);
                 self.entities.resize(idx + 1, MaybeUninit::uninit());
             }
 

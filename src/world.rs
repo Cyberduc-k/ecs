@@ -1,8 +1,8 @@
 use crate::archetype::{Archetype, ArchetypeDescriptor, ArchetypeIndex, ArchetypeLayout};
-use crate::component::ComponentSource;
+use crate::component::{Component, ComponentSource};
 use crate::entity::{Entity, EntityData, EntityMap};
 use crate::insert::{EntityInserter, EntitySource};
-use crate::storage::Components;
+use crate::storage::{Components, Storage};
 use std::sync::atomic::AtomicU64;
 
 #[derive(Default)]
@@ -11,6 +11,11 @@ pub struct World {
     components: Components,
     entities: EntityMap,
     entity_counter: AtomicU64,
+}
+
+pub struct Entry<'a> {
+    data: EntityData,
+    world: &'a mut World,
 }
 
 impl World {
@@ -61,6 +66,20 @@ impl World {
         }
     }
 
+    pub fn entry(&mut self, entity: Entity) -> Option<Entry> {
+        self.entities
+            .get(entity)
+            .map(move |data| Entry { data, world: self })
+    }
+
+    pub fn components(&self) -> &Components {
+        &self.components
+    }
+
+    pub fn archetypes(&self) -> &[Archetype] {
+        &self.archetypes
+    }
+
     fn remove_data(&mut self, data: EntityData) {
         let arch_index = data.archetype().0 as usize;
         let comp_index = data.component().0 as usize;
@@ -108,3 +127,26 @@ impl World {
     }
 }
 
+impl<'a> Entry<'a> {
+    pub fn component<T: Component>(&self) -> Option<&T> {
+        let component = self.data.component();
+        let archetype = self.data.archetype();
+
+        self.world
+            .components
+            .get::<T>()
+            .and_then(|s| s.get(archetype))
+            .and_then(|s| s.get(component))
+    }
+
+    pub fn component_mut<T: Component>(&mut self) -> Option<&mut T> {
+        let component = self.data.component();
+        let archetype = self.data.archetype();
+
+        self.world
+            .components
+            .get_mut::<T>()
+            .and_then(|s| s.get_mut(archetype))
+            .and_then(|s| s.get_mut(component))
+    }
+}

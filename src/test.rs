@@ -5,4 +5,11 @@ fn main() {
     let c = world.create(("test",));
 
     dbg!(a, b, c);
+
+    if let Some(entry) = world.entry(b) {
+        let comp = entry.component::<i8>();
+
+        dbg!(comp);
+    }
 }
+

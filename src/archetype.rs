@@ -49,6 +49,10 @@ impl ArchetypeLayout {
         self.components.push(ty);
         self.constructors.push(ctor);
     }
+
+    pub fn contains(&self, components: &[TypeId]) -> bool {
+        components.iter().all(|t| self.components.contains(t))
+    }
 }
 
 impl PartialEq for ArchetypeLayout {

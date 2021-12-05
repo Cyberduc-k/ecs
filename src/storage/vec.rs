@@ -30,6 +30,17 @@ impl<T> AnyStorage for VecStorage<T> {
 }
 
 impl<'a, T: Component> Storage<'a, T> for VecStorage<T> {
+    type Iter = std::slice::Iter<'a, T>;
+    type IterMut = std::slice::IterMut<'a, T>;
+
+    fn get(&'a self, component: ComponentIndex) -> Option<&'a T> {
+        self.vec.get(component.0 as usize)
+    }
+
+    fn get_mut(&'a mut self, component: ComponentIndex) -> Option<&'a mut T> {
+        self.vec.get_mut(component.0 as usize)
+    }
+
     fn extend<I: IntoIterator<Item = T>>(&mut self, items: I) {
         self.vec.extend(items);
     }
@@ -42,5 +53,13 @@ impl<'a, T: Component> Storage<'a, T> for VecStorage<T> {
         } else {
             None
         }
+    }
+
+    fn iter(&'a self) -> Self::Iter {
+        self.vec.iter()
+    }
+
+    fn iter_mut(&'a mut self) -> Self::IterMut {
+        self.vec.iter_mut()
     }
 }
