@@ -1,37 +1,82 @@
-use crate::archetype::{Archetype, ArchetypeIndex, ArchetypeLayout, ArchetypeDescriptor};
-use crate::component::{ComponentIndex, ComponentSource};
-use crate::entity::Entity;
-use crate::insert::{EntitySource, EntityInserter};
+use crate::archetype::{Archetype, ArchetypeDescriptor, ArchetypeIndex, ArchetypeLayout};
+use crate::component::ComponentSource;
+use crate::entity::{Entity, EntityData, EntityMap};
+use crate::insert::{EntityInserter, EntitySource};
 use crate::storage::Components;
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::AtomicU64;
 
 #[derive(Default)]
 pub struct World {
     archetypes: Vec<Archetype>,
     components: Components,
-    entities: Vec<Entity>,
-    entity_counter: AtomicU32,
-    generation: u32,
+    entities: EntityMap,
+    entity_counter: AtomicU64,
 }
 
 impl World {
     pub fn create<T: ComponentSource>(&mut self, components: T) -> Entity {
-        let archetype = self.get_archetype_index::<T>();
-        let archetype = &mut self.archetypes[archetype.0 as usize];
-        let edit = self.components.edit();
-        let entities = EntitySource::new(&self.entity_counter, self.generation);
-        let mut inserter = EntityInserter::new(edit, archetype, entities);
+        let arch_index = self.get_archetype_index::<T>();
+        let archetype = &mut self.archetypes[arch_index.0 as usize];
+        let entities = EntitySource::new(&self.entity_counter);
+        let mut inserter = EntityInserter::new(self.components.edit(), archetype, entities);
 
         components.insert_components(&mut inserter);
 
-        let (component_index, entities) = inserter.inserted();
+        let (component, entities) = inserter.inserted();
+        let replaced = self.entities.insert(entities, arch_index, component);
+        let result = entities[0];
 
-        for (i, &entity) in entities.iter().enumerate() {
-            let component = ComponentIndex(component_index.0 + i as u32);
+        for data in replaced {
+            self.remove_data(data);
         }
 
-        self.entities.extend_from_slice(entities);
-        entities[0]
+        result
+    }
+
+    pub fn create_with_id<T: ComponentSource>(&mut self, id: Entity, components: T) {
+        self.remove(id);
+
+        let arch_index = self.get_archetype_index::<T>();
+        let archetype = &mut self.archetypes[arch_index.0 as usize];
+        let entities = EntitySource::from_id(id, &self.entity_counter);
+        let mut inserter = EntityInserter::new(self.components.edit(), archetype, entities);
+
+        components.insert_components(&mut inserter);
+
+        let (component, entities) = inserter.inserted();
+
+        self.entities.insert(entities, arch_index, component);
+    }
+
+    pub fn contains(&self, entity: Entity) -> bool {
+        self.entities.contains(entity)
+    }
+
+    pub fn remove(&mut self, entity: Entity) -> bool {
+        if let Some(data) = self.entities.remove(entity) {
+            self.remove_data(data);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn remove_data(&mut self, data: EntityData) {
+        let arch_index = data.archetype().0 as usize;
+        let comp_index = data.component().0 as usize;
+        let archetype = &mut self.archetypes[arch_index];
+        let _ = archetype.entities.swap_remove(comp_index);
+
+        for &ty in &archetype.layout.components {
+            let storage = self.components.get_any_mut(ty).unwrap();
+
+            storage.swap_remove(data.archetype(), data.component());
+        }
+
+        if comp_index < archetype.entities.len() {
+            let swapped = archetype.entities[comp_index];
+            self.entities.set(swapped, data);
+        }
     }
 
     fn get_archetype_index<T: ArchetypeDescriptor>(&mut self) -> ArchetypeIndex {
@@ -47,7 +92,12 @@ impl World {
         let index = ArchetypeIndex(self.archetypes.len() as u32);
         let archetype = Archetype::new(index, layout);
 
-        for (&ty, &ctor) in archetype.layout.components.iter().zip(&archetype.layout.constructors) {
+        for (&ty, &ctor) in archetype
+            .layout
+            .components
+            .iter()
+            .zip(&archetype.layout.constructors)
+        {
             let storage = self.components.get_or_insert(ty, ctor);
 
             storage.register_archetype(index);
@@ -57,3 +107,4 @@ impl World {
         index
     }
 }
+

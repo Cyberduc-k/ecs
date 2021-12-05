@@ -1,10 +1,11 @@
 use crate::component::Component;
 use crate::entity::Entity;
-use crate::storage::{ArchetypeStorage, AnyArchetypeStorage};
+use crate::storage::{AnyArchetypeStorage, ArchetypeStorage};
 use std::any::TypeId;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
 pub struct ArchetypeIndex(pub(crate) u32);
 
 #[derive(Debug, Clone)]
@@ -87,4 +88,6 @@ macro_rules! impl_archetype_descriptor {
     };
 }
 
-impl_archetype_descriptor!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
+impl_archetype_descriptor!(
+    A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z
+);

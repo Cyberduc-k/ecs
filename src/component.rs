@@ -2,7 +2,8 @@ use crate::archetype::ArchetypeDescriptor;
 use crate::insert::EntityInserter;
 use crate::storage::{Storage, VecStorage};
 
-#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
 pub struct ComponentIndex(pub(crate) u32);
 
 pub trait Component: Sized + 'static {
@@ -44,4 +45,6 @@ macro_rules! impl_component_source {
     };
 }
 
-impl_component_source!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
+impl_component_source!(
+    A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z
+);

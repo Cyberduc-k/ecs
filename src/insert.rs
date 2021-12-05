@@ -1,9 +1,9 @@
 use crate::archetype::{Archetype, ArchetypeIndex};
 use crate::component::{Component, ComponentIndex};
 use crate::entity::Entity;
-use crate::modify::{EditComponent, EditAnyComponent, EditComponents};
+use crate::modify::{EditAnyComponent, EditComponent, EditComponents};
 use std::any::TypeId;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub struct EntityInserter<'a> {
     edit: EditComponents<'a>,
@@ -24,12 +24,15 @@ pub struct AnyComponentInserter<'a> {
 
 pub struct EntitySource<'a> {
     queue: Vec<Entity>,
-    counter: &'a AtomicU32,
-    generation: u32,
+    counter: &'a AtomicU64,
 }
 
 impl<'a> EntityInserter<'a> {
-    pub fn new(edit: EditComponents<'a>, archetype: &'a mut Archetype, entities: EntitySource<'a>) -> Self {
+    pub fn new(
+        edit: EditComponents<'a>,
+        archetype: &'a mut Archetype,
+        entities: EntitySource<'a>,
+    ) -> Self {
         Self {
             entity_count: archetype.entities.len(),
             edit,
@@ -59,7 +62,10 @@ impl<'a> EntityInserter<'a> {
     }
 
     pub fn inserted(&self) -> (ComponentIndex, &[Entity]) {
-        (ComponentIndex(self.entity_count as u32), &self.archetype.entities[self.entity_count..])
+        (
+            ComponentIndex(self.entity_count as u32),
+            &self.archetype.entities[self.entity_count..],
+        )
     }
 }
 
@@ -76,19 +82,23 @@ impl<'a> AnyComponentInserter<'a> {
 }
 
 impl<'a> EntitySource<'a> {
-    pub fn new(counter: &'a AtomicU32, generation: u32) -> Self {
+    pub fn new(counter: &'a AtomicU64) -> Self {
         Self {
             queue: Vec::new(),
             counter,
-            generation,
+        }
+    }
+
+    pub fn from_id(id: Entity, counter: &'a AtomicU64) -> Self {
+        Self {
+            queue: vec![id],
+            counter,
         }
     }
 
     pub fn next(&mut self) -> Entity {
-        self.queue.pop().unwrap_or_else(|| {
-            let id = self.counter.fetch_add(1, Ordering::SeqCst);
-
-            Entity(id, self.generation)
-        })
+        self.queue
+            .pop()
+            .unwrap_or_else(|| Entity(self.counter.fetch_add(1, Ordering::SeqCst)))
     }
 }
