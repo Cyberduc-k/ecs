@@ -1,0 +1,67 @@
+use super::*;
+
+pub struct Read<T>(PhantomData<*const T>);
+
+pub enum ReadIter<'a, T: Component> {
+    Empty,
+    Iter {
+        storage: &'a ArchetypeStorage<T>,
+        components: Option<<T::Storage as Storage<'a, T>>::Iter>,
+        archetypes: std::slice::Iter<'a, ArchetypeIndex>,
+    },
+}
+
+impl<T: Component> IntoQuery for &T {
+    type Fetch = Read<T>;
+}
+
+impl<'a, T: Component> Fetch<'a> for Read<T> {
+    type Item = &'a T;
+    type Iter = ReadIter<'a, T>;
+
+    fn fetch(components: &'a Components, _: &'a [Archetype], index: &'a [ArchetypeIndex]) -> Self::Iter {
+        match components.get::<T>() {
+            None => ReadIter::Empty,
+            Some(storage) => ReadIter::Iter {
+                storage,
+                components: None,
+                archetypes: index.iter(),
+            },
+        }
+    }
+}
+
+impl<T: Component> Readonly for Read<T> {}
+
+impl<T: Component> ComponentTypes for Read<T> {
+    fn components() -> Vec<TypeId> {
+        vec![TypeId::of::<T>()]
+    }
+}
+
+impl<'a, T: Component> Iterator for ReadIter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Empty => None,
+            Self::Iter {
+                storage,
+                components,
+                archetypes,
+            } => match components {
+                Some(comps) => match comps.next() {
+                    Some(comp) => Some(comp),
+                    None => {
+                        *components = None;
+                        self.next()
+                    }
+                },
+                None => {
+                    *components = storage.get(*archetypes.next()?).map(|s| s.iter());
+                    self.next()
+                }
+            },
+        }
+    }
+}

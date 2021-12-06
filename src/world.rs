@@ -80,6 +80,10 @@ impl World {
         &self.archetypes
     }
 
+    pub fn entities(&self) -> &EntityMap {
+        &self.entities
+    }
+
     fn remove_data(&mut self, data: EntityData) {
         let arch_index = data.archetype().0 as usize;
         let comp_index = data.component().0 as usize;

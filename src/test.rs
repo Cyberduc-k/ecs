@@ -1,15 +1,20 @@
+use ecs::entity::Entity;
+use ecs::query::IntoQuery;
+use ecs::world::World;
+
 fn main() {
-    let mut world = ecs::world::World::default();
-    let a = world.create((32i32, 8i8, true));
-    let b = world.create((64i32, 16i8, false));
-    let c = world.create(("test",));
+    let mut world = World::default();
 
-    dbg!(a, b, c);
+    world.create((32i32, 8i8, true));
+    let e = world.create(("test", 324i32));
+    world.create((64i32, 16i8, false));
 
-    if let Some(entry) = world.entry(b) {
-        let comp = entry.component::<i8>();
+    if let Some(i) = <&mut i32>::query().get_mut(&mut world, e) {
+        println!("{}", i);
+    }
 
-        dbg!(comp);
+    for (e, i) in <(Entity, &mut i32)>::query().iter_mut(&mut world) {
+        *i += 5;
+        println!("{:?}: {}", e, i);
     }
 }
-

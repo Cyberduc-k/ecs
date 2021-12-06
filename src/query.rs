@@ -1,177 +1,138 @@
-use crate::{
-    archetype::ArchetypeIndex,
-    component::Component,
-    storage::{ArchetypeStorage, Components, Storage},
-};
-use std::marker::PhantomData;
+mod entity;
+mod read;
+mod write;
+mod multiple;
 
-pub trait Fetch<'a> {
+use crate::{
+    archetype::{Archetype, ArchetypeIndex},
+    component::Component,
+    entity::Entity,
+    storage::{ArchetypeStorage, Components, Storage},
+    world::World,
+};
+use std::{
+    any::TypeId,
+    marker::PhantomData,
+};
+
+pub trait IntoQuery: Sized {
+    type Fetch: for<'a> Fetch<'a>;
+
+    fn query() -> Query<Self> {
+        Query::default()
+    }
+}
+
+pub struct Query<T: IntoQuery> {
+    _marker: PhantomData<T>,
+    archetypes: Option<Vec<ArchetypeIndex>>,
+}
+
+pub trait Fetch<'a>: ComponentTypes {
     type Item: 'a;
     type Iter: Iterator<Item = Self::Item>;
 
-    fn fetch(components: &'a Components, archetypes: &'a [ArchetypeIndex]) -> Self::Iter;
+    fn fetch(components: &'a Components, archetypes: &'a [Archetype], index: &'a [ArchetypeIndex]) -> Self::Iter;
 }
 
-pub struct Read<T>(PhantomData<*const T>);
-pub struct Write<T>(PhantomData<*mut T>);
-pub struct Multiple<T>(T);
-
-pub enum ReadIter<'a, T: Component> {
-    Empty,
-    Iter {
-        storage: &'a ArchetypeStorage<T>,
-        components: Option<<T::Storage as Storage<'a, T>>::Iter>,
-        archetypes: std::slice::Iter<'a, ArchetypeIndex>,
-    },
+pub trait ComponentTypes {
+    fn components() -> Vec<TypeId>;
 }
 
-pub enum WriteIter<'a, T: Component> {
-    Empty,
-    Iter {
-        storage: &'a ArchetypeStorage<T>,
-        components: Option<<T::Storage as Storage<'a, T>>::IterMut>,
-        archetypes: std::slice::Iter<'a, ArchetypeIndex>,
-    },
-}
+pub trait Readonly {}
 
-pub struct MultiIter<T>(T);
-
-impl<'a, T: Component> Fetch<'a> for Read<T> {
-    type Item = &'a T;
-    type Iter = ReadIter<'a, T>;
-
-    fn fetch(components: &'a Components, archetypes: &'a [ArchetypeIndex]) -> Self::Iter {
-        match components.get::<T>() {
-            None => ReadIter::Empty,
-            Some(storage) => ReadIter::Iter {
-                storage,
-                components: None,
-                archetypes: archetypes.iter(),
-            },
+impl<T: IntoQuery> Default for Query<T> {
+    fn default() -> Self {
+        Self {
+            _marker: PhantomData,
+            archetypes: None,
         }
     }
 }
 
-impl<'a, T: Component> Fetch<'a> for Write<T> {
-    type Item = &'a mut T;
-    type Iter = WriteIter<'a, T>;
-
-    fn fetch(components: &'a Components, archetypes: &'a [ArchetypeIndex]) -> Self::Iter {
-        match components.get::<T>() {
-            None => WriteIter::Empty,
-            Some(storage) => WriteIter::Iter {
-                storage,
-                components: None,
-                archetypes: archetypes.iter(),
-            },
+impl<T: IntoQuery> Clone for Query<T> {
+    fn clone(&self) -> Self {
+        Self {
+            _marker: PhantomData,
+            archetypes: self.archetypes.clone(),
         }
     }
 }
 
-impl<'a, T: Component> Iterator for ReadIter<'a, T> {
-    type Item = &'a T;
+impl<T: IntoQuery> Query<T> {
+    pub fn get<'a>(&'a mut self, world: &'a World, entity: Entity) -> Option<<T::Fetch as Fetch<'a>>::Item>
+    where
+        T::Fetch: Readonly,
+    {
+        let data = world.entities().get(entity)?;
+        let index: &[ArchetypeIndex] = &[data.archetype()];
+        let index = unsafe { std::mem::transmute(index) };
+        let mut iter = <T::Fetch as Fetch<'a>>::fetch(world.components(), world.archetypes(), index);
 
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            Self::Empty => None,
-            Self::Iter {
-                storage,
-                components,
-                archetypes,
-            } => match components {
-                Some(comps) => match comps.next() {
-                    Some(comp) => Some(comp),
-                    None => {
-                        *components = None;
-                        self.next()
-                    }
-                },
-                None => {
-                    *components = storage.get(*archetypes.next()?).map(|s| s.iter());
-                    self.next()
-                }
-            },
+        iter.nth(data.component().0 as usize)
+    }
+
+    pub fn get_mut<'a>(&'a mut self, world: &'a mut World, entity: Entity) -> Option<<T::Fetch as Fetch<'a>>::Item> {
+        let data = world.entities().get(entity)?;
+        let index: &[ArchetypeIndex] = &[data.archetype()];
+        let index = unsafe { std::mem::transmute(index) };
+        let mut iter = <T::Fetch as Fetch<'a>>::fetch(world.components(), world.archetypes(), index);
+
+        iter.nth(data.component().0 as usize)
+    }
+
+    pub fn iter<'a>(&'a mut self, world: &'a World) -> <T::Fetch as Fetch<'a>>::Iter
+    where
+        T::Fetch: Readonly,
+    {
+        let index = self.find_archetypes(world);
+
+        <T::Fetch as Fetch<'a>>::fetch(world.components(), world.archetypes(), index)
+    }
+
+    pub fn iter_mut<'a>(&'a mut self, world: &'a mut World) -> <T::Fetch as Fetch<'a>>::Iter {
+        let index = self.find_archetypes(world);
+
+        <T::Fetch as Fetch<'a>>::fetch(world.components(), world.archetypes(), index)
+    }
+
+    fn find_archetypes<'a>(&'a mut self, world: &World) -> &'a [ArchetypeIndex] {
+        match self.archetypes {
+            Some(ref archetypes) => archetypes,
+            None => {
+                let components = T::Fetch::components();
+        
+                self.archetypes = Some(world.archetypes().iter().filter_map(|a| if a.layout.contains(&components) {
+                    Some(a.index)
+                } else {
+                    None
+                }).collect());
+
+                self.archetypes.as_ref().unwrap()
+            }
         }
     }
 }
 
-impl<'a, T: Component> Iterator for WriteIter<'a, T> {
-    type Item = &'a mut T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            Self::Empty => None,
-            Self::Iter {
-                storage,
-                components,
-                archetypes,
-            } => match components {
-                Some(comps) => match comps.next() {
-                    Some(comp) => Some(comp),
-                    None => {
-                        *components = None;
-                        self.next()
-                    }
-                },
-                None => unsafe {
-                    *components = storage
-                        .get_mut_unchecked(*archetypes.next()?)
-                        .map(|s| s.iter_mut());
-                    self.next()
-                },
-            },
-        }
-    }
-}
-
-macro_rules! impl_multi {
+macro_rules! impl_tuple_query {
     ($head:ident) => {
-        impl_multi!(@impl $head);
+        impl_tuple_query!(@impl $head);
     };
 
-    ($head:ident, $($tail:ident),+) => {
-        impl_multi!($($tail),+);
-        impl_multi!(@impl $head, $($tail),+);
+    ($head:ident, $($tail:ident),+) =>{
+        impl_tuple_query!($($tail),+);
+        impl_tuple_query!(@impl $head, $($tail),+);
     };
 
     (@impl $($ty:ident),*) => {
-        impl<'a, $($ty: Fetch<'a>),+> Fetch<'a> for Multiple<($($ty,)+)> {
-            type Item = ($($ty::Item,)+);
-            type Iter = MultiIter<($($ty::Iter,)+)>;
-
-            #[allow(non_snake_case)]
-            fn fetch(components: &'a Components, archetypes: &'a [ArchetypeIndex]) -> Self::Iter {
-                $(let $ty = $ty::fetch(components, archetypes);)*
-                MultiIter(($($ty,)+))
+        impl<$($ty: IntoQuery),*> IntoQuery for ($($ty,)*) {
+            type Fetch = multiple::Multiple<($($ty::Fetch,)*)>;
+            
+            fn query() -> Query<Self> {
+                Query::default()
             }
         }
     };
 }
 
-impl_multi!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
-
-macro_rules! impl_multi_iter {
-    ($head:ident) => {
-        impl_multi_iter!(@impl $head);
-    };
-
-    ($head:ident, $($tail:ident),+) => {
-        impl_multi_iter!($($tail),+);
-        impl_multi_iter!(@impl $head, $($tail),+);
-    };
-
-    (@impl $($ty:ident),*) => {
-        impl<$($ty: Iterator),+> Iterator for MultiIter<($($ty,)+)> {
-            type Item = ($($ty::Item,)+);
-
-            #[allow(non_snake_case)]
-            fn next(&mut self) -> Option<Self::Item> {
-                let Self(($($ty,)+)) = self;
-                $(let $ty = $ty.next()?;)+
-                Some(($($ty,)+))
-            }
-        }
-    };
-}
-
-impl_multi_iter!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
+impl_tuple_query!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);

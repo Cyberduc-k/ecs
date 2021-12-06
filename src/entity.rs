@@ -63,10 +63,9 @@ impl EntityMap {
             if self.free.remove(&entity.0) {
                 self.entities[idx] = MaybeUninit::new(data);
             } else {
-                removed.push(std::mem::replace(
-                    unsafe { self.entities[idx].assume_init_mut() },
-                    data,
-                ));
+                removed.push(unsafe {
+                    std::ptr::replace(self.entities[idx].as_mut_ptr(), data)
+                });
             }
         }
 
