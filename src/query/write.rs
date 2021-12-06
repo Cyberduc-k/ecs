@@ -15,6 +15,10 @@ impl<T: Component> IntoQuery for &mut T {
     type Fetch = Write<T>;
 }
 
+impl<T: Component> IntoQuery for Write<T> {
+    type Fetch = Self;
+}
+
 impl<'a, T: Component> Fetch<'a> for Write<T> {
     type Item = &'a mut T;
     type Iter = WriteIter<'a, T>;

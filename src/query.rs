@@ -3,6 +3,9 @@ mod read;
 mod write;
 mod multiple;
 
+pub use read::Read;
+pub use write::Write;
+
 use crate::{
     archetype::{Archetype, ArchetypeIndex},
     component::Component,

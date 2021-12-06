@@ -15,6 +15,10 @@ impl<T: Component> IntoQuery for &T {
     type Fetch = Read<T>;
 }
 
+impl<T: Component> IntoQuery for Read<T> {
+    type Fetch = Self;
+}
+
 impl<'a, T: Component> Fetch<'a> for Read<T> {
     type Item = &'a T;
     type Iter = ReadIter<'a, T>;
