@@ -14,3 +14,14 @@ fn main() {
         println!("{:?}: {}", e, i);
     }
 }
+
+use ecs::query::Read;
+use ecs::system::{Query, System, SystemData};
+
+struct TestSystem;
+
+impl System for TestSystem {
+    type Data = Query<(Read<i32>, Read<i8>)>;
+
+    fn run(&mut self, data: <Self::Data as SystemData>::Result) {}
+}
