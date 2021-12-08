@@ -1,46 +1,51 @@
-use crate::query::{self, Fetch, IntoQuery, Readonly};
+use crate::query::{self, Fetch, IntoQuery, Readonly, QueryIter};
 use crate::world::World;
 use std::marker::PhantomData;
 
-pub trait System {
-    type Data: for<'a> SystemData<'a>;
+pub trait System<'a> {
+    type Data: SystemData<'a>;
 
-    fn run(&mut self, data: <Self::Data as SystemData>::Result);
+    fn run(&mut self, data: <Self::Data as SystemData<'a>>::Result);
 }
 
 pub trait SystemData<'a>: Sized {
-    type Result;
+    type Result: 'a;
 
     fn fetch(world: &'a mut World) -> Self::Result;
 }
 
 pub struct Query<T: IntoQuery>(PhantomData<fn() -> T::Fetch>);
 
-pub struct SystemQuery<'a, T: Fetch<'a>> {
+pub struct SystemQuery<'a, T: for<'b> Fetch<'b>> {
     world: *mut World,
-    query: query::Query<'a, T>,
+    query: query::Query<T>,
+    _marker: PhantomData<fn(&'a World) -> T>
 }
 
-impl<'a, T: IntoQuery> SystemData<'a> for Query<T> {
+impl<'a, T: IntoQuery> SystemData<'a> for Query<T>
+where
+    T::Fetch: 'a,
+{
     type Result = SystemQuery<'a, T::Fetch>;
 
     fn fetch(world: &'a mut World) -> Self::Result {
         SystemQuery {
             world,
             query: T::query(),
+            _marker: PhantomData,
         }
     }
 }
 
-impl<'a, T: Fetch<'a>> SystemQuery<'a, T> {
-    pub fn iter(&'a mut self) -> T::Iter
+impl<'a, T: for<'b> Fetch<'b>> SystemQuery<'a, T> {
+    pub fn iter<'b>(&'b mut self) -> QueryIter<'a, 'b, T>
     where
         T: Readonly,
     {
         self.query.iter(unsafe { &*self.world })
     }
 
-    pub fn iter_mut(&'a mut self) -> T::Iter {
+    pub fn iter_mut<'b>(&'b mut self) -> QueryIter<'a, 'b, T> {
         self.query.iter_mut(unsafe { &mut *self.world })
     }
 }
@@ -60,7 +65,11 @@ macro_rules! impl_system_data {
             type Result = ($($ty::Result,)*);
 
             fn fetch(world: &'a mut World) -> Self::Result {
-                todo!();
+                let world = world as *mut World;
+
+                unsafe {
+                    ($($ty::fetch(&mut *world),)*)
+                }
             }
         }
     };

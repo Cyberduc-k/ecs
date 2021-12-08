@@ -9,19 +9,30 @@ fn main() {
     world.create(("test", 324i32));
     world.create((64i32, 16i8, false));
 
-    for (e, i) in <(Entity, &mut i32)>::query().iter_mut(&mut world) {
-        *i += 5;
-        println!("{:?}: {}", e, i);
-    }
+    let mut test = TestSystem;
+    let data = <TestSystem as System>::Data::fetch(&mut world);
+
+    test.run(data);
 }
 
-use ecs::query::Read;
+use ecs::query::{Read, Write};
 use ecs::system::{Query, System, SystemData};
 
 struct TestSystem;
 
-impl System for TestSystem {
-    type Data = Query<(Read<i32>, Read<i8>)>;
+impl<'a> System<'a> for TestSystem {
+    type Data = (
+        Query<(Read<i32>, Write<i8>)>,
+        Query<(Read<i32>, Read<&'static str>)>,
+    );
 
-    fn run(&mut self, data: <Self::Data as SystemData>::Result) {}
+    fn run(&mut self, (mut a, mut b): <Self::Data as SystemData<'a>>::Result) {
+        for (int, byte) in a.iter_mut() {
+            println!("{}, {}", int, byte);
+        }
+
+        for (int, string) in b.iter() {
+            println!("{}, {:?}", int, string);
+        }
+    }
 }

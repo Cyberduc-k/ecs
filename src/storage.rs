@@ -1,6 +1,8 @@
+mod null;
 mod single;
 mod vec;
 
+pub use null::NullStorage;
 pub use single::SingleStorage;
 pub use vec::VecStorage;
 

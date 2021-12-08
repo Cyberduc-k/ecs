@@ -22,19 +22,24 @@ use std::{
 pub trait IntoQuery: Sized {
     type Fetch: for<'a> Fetch<'a>;
 
-    fn query<'a>() -> Query<'a, Self::Fetch> {
+    fn query() -> Query<Self::Fetch> {
         Query::default()
     }
 }
 
-pub struct Query<'a, T: Fetch<'a>> {
-    _marker: PhantomData<fn(&'a World) -> T>,
+pub struct Query<T: for<'a> Fetch<'a>> {
     archetypes: Option<Vec<ArchetypeIndex>>,
+    _marker: PhantomData<T>,
+}
+
+pub struct QueryIter<'data, 'index, F: Fetch<'data>> {
+    iter: F::Iter,
+    _marker: PhantomData<&'index [ArchetypeIndex]>,
 }
 
 pub trait Fetch<'a>: ComponentTypes {
     type Item: 'a;
-    type Iter: Iterator<Item = Self::Item>;
+    type Iter: Iterator<Item = Self::Item> + 'a;
 
     fn fetch(components: &'a Components, archetypes: &'a [Archetype], index: &'a [ArchetypeIndex]) -> Self::Iter;
 }
@@ -45,26 +50,26 @@ pub trait ComponentTypes {
 
 pub trait Readonly {}
 
-impl<'a, T: Fetch<'a>> Default for Query<'a, T> {
+impl<T: for<'a> Fetch<'a>> Default for Query<T> {
     fn default() -> Self {
         Self {
-            _marker: PhantomData,
             archetypes: None,
+            _marker: PhantomData,
         }
     }
 }
 
-impl<'a, T: Fetch<'a>> Clone for Query<'a, T> {
+impl<T: for<'a> Fetch<'a>> Clone for Query<T> {
     fn clone(&self) -> Self {
         Self {
-            _marker: PhantomData,
             archetypes: self.archetypes.clone(),
+            _marker: PhantomData,
         }
     }
 }
 
-impl<'a, T: Fetch<'a>> Query<'a, T> {
-    pub fn get(&mut self, world: &'a World, entity: Entity) -> Option<T::Item>
+impl<T: for<'a> Fetch<'a>> Query<T> {
+    pub fn get<'a>(&mut self, world: &'a World, entity: Entity) -> Option<<T as Fetch<'a>>::Item>
     where
         T: Readonly,
     {
@@ -76,7 +81,7 @@ impl<'a, T: Fetch<'a>> Query<'a, T> {
         iter.nth(data.component().0 as usize)
     }
 
-    pub fn get_mut(&mut self, world: &'a mut World, entity: Entity) -> Option<T::Item> {
+    pub fn get_mut<'a>(&mut self, world: &'a mut World, entity: Entity) -> Option<<T as Fetch<'a>>::Item> {
         let data = world.entities().get(entity)?;
         let index: &[ArchetypeIndex] = &[data.archetype()];
         let index = unsafe { std::mem::transmute(index) };
@@ -85,22 +90,30 @@ impl<'a, T: Fetch<'a>> Query<'a, T> {
         iter.nth(data.component().0 as usize)
     }
 
-    pub fn iter(&'a mut self, world: &'a World) -> T::Iter
+    pub fn iter<'a, 'b>(&'b mut self, world: &'a World) -> QueryIter<'a, 'b, T>
     where
         T: Readonly,
     {
         let index = self.find_archetypes(world);
+        let index = unsafe { std::mem::transmute::<_, &'a [ArchetypeIndex]>(index) };
 
-        T::fetch(world.components(), world.archetypes(), index)
+        QueryIter {
+            iter: T::fetch(world.components(), world.archetypes(), index),
+            _marker: PhantomData,
+        }
     }
 
-    pub fn iter_mut(&'a mut self, world: &'a mut World) -> T::Iter {
+    pub fn iter_mut<'a, 'b>(&'b mut self, world: &'a mut World) -> QueryIter<'a, 'b, T> {
         let index = self.find_archetypes(world);
+        let index = unsafe { std::mem::transmute::<_, &'a [ArchetypeIndex]>(index) };
 
-        T::fetch(world.components(), world.archetypes(), index)
+        QueryIter {
+            iter: T::fetch(world.components(), world.archetypes(), index),
+            _marker: PhantomData,
+        }
     }
 
-    fn find_archetypes(&'a mut self, world: &World) -> &'a [ArchetypeIndex] {
+    fn find_archetypes<'a>(&'a mut self, world: &World) -> &'a [ArchetypeIndex] {
         match self.archetypes {
             Some(ref archetypes) => archetypes,
             None => {
@@ -118,6 +131,14 @@ impl<'a, T: Fetch<'a>> Query<'a, T> {
     }
 }
 
+impl<'data, 'index, T: Fetch<'data>> Iterator for QueryIter<'data, 'index, T> {
+    type Item = T::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next()
+    }
+}
+
 macro_rules! impl_tuple_query {
     ($head:ident) => {
         impl_tuple_query!(@impl $head);
@@ -132,7 +153,7 @@ macro_rules! impl_tuple_query {
         impl<$($ty: IntoQuery),*> IntoQuery for ($($ty,)*) {
             type Fetch = multiple::Multiple<($($ty::Fetch,)*)>;
             
-            fn query<'a>() -> Query<'a, Self::Fetch> {
+            fn query() -> Query<Self::Fetch> {
                 Query::default()
             }
         }
