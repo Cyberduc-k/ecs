@@ -22,6 +22,25 @@ pub struct SystemQuery<'a, T: for<'b> Fetch<'b>> {
     _marker: PhantomData<fn(&'a World) -> T>
 }
 
+impl<'a, F> System<'a> for F
+where
+    F: FnMut(&'a mut World),
+{
+    type Data = &'a mut World;
+
+    fn run(&mut self, world: &'a mut World) {
+        (self)(world)
+    }
+}
+
+impl<'a> SystemData<'a> for &'a mut World {
+    type Result = &'a mut World;
+
+    fn fetch(world: &'a mut World) -> Self::Result {
+        world
+    }
+}
+
 impl<'a, T: IntoQuery> SystemData<'a> for Query<T>
 where
     T::Fetch: 'a,
