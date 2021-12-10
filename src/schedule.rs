@@ -6,8 +6,23 @@ pub struct Schedule<S> {
     systems: S,
 }
 
+pub struct DynSchedule<'a> {
+    systems: Vec<Box<dyn DynSystem<'a>>>,
+}
+
 pub trait Systems<'a> {
     fn run(&mut self, world: &'a mut World);
+}
+
+pub trait DynSystem<'a>: 'a {
+    fn run(&mut self, world: &'a mut World);
+}
+
+impl<'a, T: System<'a> + 'a> DynSystem<'a> for T {
+    fn run(&mut self, world: &'a mut World) {
+        let data = T::Data::fetch(world);
+        System::run(self, data);
+    }
 }
 
 impl Schedule<()> {
@@ -41,6 +56,31 @@ impl<S: Flatten> Schedule<S> {
 impl<'a, S: Systems<'a>> Schedule<S> {
     pub fn run(&mut self, world: &'a mut World) {
         self.systems.run(world);
+    }
+}
+
+impl<'a> DynSchedule<'a> {
+    pub fn new() -> Self {
+        Self {
+            systems: Vec::new(),
+        }
+    }
+
+    pub fn with_system<S: System<'a> + 'a>(mut self, system: S) -> Self {
+        self.add_system(system);
+        self
+    }
+
+    pub fn add_system<S: DynSystem<'a>>(&mut self, system: S) {
+        self.systems.push(Box::new(system));
+    }
+
+    pub fn run(&mut self, world: &'a mut World) {
+        let world = world as *mut World;
+
+        self.systems.iter_mut().for_each(move |system| unsafe {
+            system.run(&mut *world)
+        });
     }
 }
 
