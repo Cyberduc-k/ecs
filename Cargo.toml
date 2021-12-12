@@ -9,3 +9,4 @@ name = "test"
 path = "src/test.rs"
 
 [dependencies]
+atomic_refcell = "0.1.8"

@@ -1,39 +1,40 @@
 use crate::query::{self, Fetch, IntoQuery, QueryIter, Readonly};
+use crate::resource::Resources;
 use crate::world::World;
 use std::marker::PhantomData;
 
 pub trait System {
-    type Data: for<'world> SystemData<'world>;
+    type Data: for<'data> SystemData<'data>;
 
     fn run(&mut self, data: <Self::Data as SystemData>::Result);
 }
 
-pub trait SystemData<'world>: Sized {
-    type Result: 'world;
+pub trait SystemData<'data>: Sized {
+    type Result: 'data;
 
-    fn fetch(world: &'world mut World) -> Self::Result;
+    fn fetch(world: &'data mut World, resources: &'data mut Resources) -> Self::Result;
 }
 
 pub struct Query<T: IntoQuery>(PhantomData<fn() -> T::Fetch>);
-pub struct WorldData;
+pub struct WorldAndResources;
 
-pub struct SystemQuery<'world, T: for<'fetch> Fetch<'fetch>> {
+pub struct SystemQuery<'data, T: for<'fetch> Fetch<'fetch>> {
     world: *mut World,
     query: query::Query<T>,
-    _marker: PhantomData<fn(&'world World) -> T>,
+    _marker: PhantomData<fn(&'data World) -> T>,
 }
 
-pub struct SystemFn<F: for<'world> FnMut(&'world mut World)>(pub F);
+pub struct SystemFn<F>(pub F);
 
 impl<F> System for SystemFn<F>
 where
-    F: for<'world> FnMut(&'world mut World),
+    F: for<'data> FnMut(&'data mut World, &'data Resources),
 {
-    type Data = WorldData;
+    type Data = WorldAndResources;
 
     #[inline]
-    fn run(&mut self, world: &mut World) {
-        (self.0)(world)
+    fn run(&mut self, (world, resources): <Self::Data as SystemData>::Result) {
+        (self.0)(world, resources)
     }
 }
 
@@ -41,27 +42,27 @@ impl SystemData<'_> for () {
     type Result = ();
 
     #[inline]
-    fn fetch(_: &mut World) -> Self::Result {
+    fn fetch(_: &mut World, _: &mut Resources) -> Self::Result {
         ()
     }
 }
 
-impl<'world> SystemData<'world> for WorldData {
-    type Result = &'world mut World;
+impl<'data> SystemData<'data> for WorldAndResources {
+    type Result = (&'data mut World, &'data Resources);
 
     #[inline]
-    fn fetch(world: &'world mut World) -> Self::Result {
-        world
+    fn fetch(world: &'data mut World, resources: &'data mut Resources) -> Self::Result {
+        (world, resources)
     }
 }
 
-impl<'world, T: IntoQuery> SystemData<'world> for Query<T>
+impl<'data, T: IntoQuery> SystemData<'data> for Query<T>
 where
-    T::Fetch: 'world,
+    T::Fetch: 'data,
 {
-    type Result = SystemQuery<'world, T::Fetch>;
+    type Result = SystemQuery<'data, T::Fetch>;
 
-    fn fetch(world: &'world mut World) -> Self::Result {
+    fn fetch(world: &'data mut World, _: &'data mut Resources) -> Self::Result {
         SystemQuery {
             world,
             query: T::query(),
@@ -70,15 +71,15 @@ where
     }
 }
 
-impl<'world, T: for<'fetch> Fetch<'fetch>> SystemQuery<'world, T> {
-    pub fn iter<'index>(&'index self) -> QueryIter<'world, 'index, T>
+impl<'data, T: for<'fetch> Fetch<'fetch>> SystemQuery<'data, T> {
+    pub fn iter<'index>(&'index self) -> QueryIter<'data, 'index, T>
     where
         T: Readonly,
     {
         self.query.iter(unsafe { &*self.world })
     }
 
-    pub fn iter_mut<'index>(&'index self) -> QueryIter<'world, 'index, T> {
+    pub fn iter_mut<'index>(&'index self) -> QueryIter<'data, 'index, T> {
         self.query.iter_mut(unsafe { &mut *self.world })
     }
 }
@@ -94,14 +95,15 @@ macro_rules! impl_system_data {
     };
 
     (@impl $($ty:ident),+) => {
-        impl<'world, $($ty: SystemData<'world>),+> SystemData<'world> for ($($ty,)+) {
+        impl<'data, $($ty: SystemData<'data>),+> SystemData<'data> for ($($ty,)+) {
             type Result = ($($ty::Result,)*);
 
-            fn fetch(world: &'world mut World) -> Self::Result {
+            fn fetch(world: &'data mut World, resources: &'data mut Resources) -> Self::Result {
                 let world = world as *mut World;
+                let resources = resources as *mut Resources;
 
                 unsafe {
-                    ($($ty::fetch(&mut *world),)*)
+                    ($($ty::fetch(&mut *world, &mut *resources),)*)
                 }
             }
         }

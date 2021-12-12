@@ -1,9 +1,11 @@
 use ecs::entity::Entity;
+use ecs::resource::Resources;
 use ecs::schedule::Schedule;
 use ecs::world::World;
 
 fn main() {
     let mut world = World::default();
+    let mut resources = Resources::default();
 
     world.create((32i32, 8i8, true));
     world.create(("test", 324i32));
@@ -12,10 +14,10 @@ fn main() {
     let mut schedule = Schedule::new()
         .with_system(A)
         .with_system(B::default())
-        .with_system_fn(|_world| {})
+        .with_system_fn(|_world, _resources| {})
         .finish();
 
-    schedule.run(&mut world);
+    schedule.run(&mut world, &mut resources);
 }
 
 use ecs::query::{Read, Write};
@@ -50,4 +52,3 @@ impl<'a> System for B<'a> {
         dbg!(&self.0);
     }
 }
-

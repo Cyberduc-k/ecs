@@ -1,3 +1,4 @@
+use crate::resource::Resources;
 use crate::system::{System, SystemData, SystemFn};
 use crate::type_list::{Append, Flatten};
 use crate::world::World;
@@ -11,7 +12,7 @@ pub struct DynSchedule<'system> {
 }
 
 pub trait Systems {
-    fn run(&mut self, world: &mut World);
+    fn run(&mut self, world: &mut World, resources: &mut Resources);
 }
 
 pub trait SystemBundle<S> {
@@ -37,12 +38,12 @@ where
 }
 
 pub trait DynSystem {
-    fn run(&mut self, world: &mut World);
+    fn run(&mut self, world: &mut World, resources: &mut Resources);
 }
 
 impl<T: System> DynSystem for T {
-    fn run(&mut self, world: &mut World) {
-        let data = T::Data::fetch(world);
+    fn run(&mut self, world: &mut World, resources: &mut Resources) {
+        let data = T::Data::fetch(world, resources);
         System::run(self, data);
     }
 }
@@ -67,7 +68,7 @@ impl<S> Schedule<S> {
     pub fn with_system_fn<F>(self, func: F) -> Schedule<S::Output>
     where
         S: Append<SystemFn<F>>,
-        F: for<'world> FnMut(&'world mut World),
+        F: for<'data> FnMut(&'data mut World, &'data Resources),
     {
         Schedule {
             systems: self.systems.append(SystemFn(func)),
@@ -91,8 +92,8 @@ impl<S: Flatten> Schedule<S> {
 }
 
 impl<S: Systems> Schedule<S> {
-    pub fn run(&mut self, world: &mut World) {
-        self.systems.run(world);
+    pub fn run(&mut self, world: &mut World, resources: &mut Resources) {
+        self.systems.run(world, resources);
     }
 }
 
@@ -106,7 +107,7 @@ impl<'system> DynSchedule<'system> {
         self
     }
 
-    pub fn with_system_fn<F: for<'world> FnMut(&'world mut World) + 'system>(self, func: F) -> Self {
+    pub fn with_system_fn<F: for<'data> FnMut(&'data mut World, &'data Resources) + 'system>(self, func: F) -> Self {
         self.with_system(SystemFn(func))
     }
 
@@ -119,7 +120,7 @@ impl<'system> DynSchedule<'system> {
         self.systems.push(Box::new(system));
     }
 
-    pub fn add_system_fn<F: for<'world> FnMut(&'world mut World) + 'system>(&mut self, func: F) {
+    pub fn add_system_fn<F: for<'data> FnMut(&'data mut World, &'data Resources) + 'system>(&mut self, func: F) {
         self.add_system(SystemFn(func));
     }
 
@@ -127,17 +128,18 @@ impl<'system> DynSchedule<'system> {
         bundle.add_systems(self);
     }
 
-    pub fn run(&mut self, world: &mut World) {
+    pub fn run(&mut self, world: &mut World, resources: &mut Resources) {
         let world = world as *mut World;
+        let resources = resources as *mut Resources;
 
         self.systems
             .iter_mut()
-            .for_each(move |system| unsafe { system.run(&mut *world) });
+            .for_each(move |system| unsafe { system.run(&mut *world, &mut *resources) });
     }
 }
 
 impl Systems for () {
-    fn run(&mut self, _: &mut World) {
+    fn run(&mut self, _: &mut World, _: &mut Resources) {
     }
 }
 
@@ -154,10 +156,14 @@ macro_rules! impl_systems {
     (@impl $($ty:ident),+) => {
         impl<$($ty: System),+> Systems for ($($ty,)+) {
             #[allow(non_snake_case)]
-            fn run(&mut self, world: &mut World) {
+            fn run(&mut self, world: &mut World, resources: &mut Resources) {
                 let world = world as *mut World;
+                let resources = resources as *mut Resources;
                 let ($($ty,)+) = self;
-                $($ty.run($ty::Data::fetch(unsafe { &mut *world }));)+
+
+                unsafe {
+                    $($ty.run($ty::Data::fetch(&mut *world, &mut *resources));)+
+                }
             }
         }
     };
