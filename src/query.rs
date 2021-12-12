@@ -3,9 +3,8 @@ mod multiple;
 mod read;
 mod write;
 
+pub use crate::resource::{Read, Readonly, Write};
 pub use multiple::Multiple;
-pub use read::Read;
-pub use write::Write;
 
 use crate::{
     archetype::{Archetype, ArchetypeIndex},
@@ -50,8 +49,6 @@ pub trait Fetch<'world>: ComponentTypes {
 pub trait ComponentTypes {
     fn components() -> Vec<TypeId>;
 }
-
-pub trait Readonly {}
 
 impl<T: for<'world> Fetch<'world>> Default for Query<T> {
     fn default() -> Self {

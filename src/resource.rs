@@ -1,8 +1,8 @@
-use crate::query::{Read, Readonly, Write};
 use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
+    marker::PhantomData,
 };
 
 #[derive(Default)]
@@ -28,6 +28,11 @@ pub trait ResourceSet<'resources> {
         unsafe { Self::fetch_unchecked(resources) }
     }
 }
+
+pub trait Readonly {}
+
+pub struct Read<T>(PhantomData<*const T>);
+pub struct Write<T>(PhantomData<*mut T>);
 
 impl<T: 'static> Resource for T {
 }

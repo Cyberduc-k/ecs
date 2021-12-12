@@ -1,6 +1,5 @@
 use super::*;
-
-pub struct Write<T>(PhantomData<*mut T>);
+use crate::resource::Write;
 
 pub enum WriteIter<'a, T: Component> {
     Empty,
@@ -25,8 +24,8 @@ impl<'a, T: Component> Fetch<'a> for Write<T> {
 
     fn fetch(components: &'a Components, _: &'a [Archetype], index: &'a [ArchetypeIndex]) -> Self::Iter {
         match components.get::<T>() {
-            None => WriteIter::Empty,
-            Some(storage) => WriteIter::Iter {
+            | None => WriteIter::Empty,
+            | Some(storage) => WriteIter::Iter {
                 storage,
                 components: None,
                 archetypes: index.iter(),
@@ -46,26 +45,25 @@ impl<'a, T: Component> Iterator for WriteIter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            Self::Empty => None,
-            Self::Iter {
+            | Self::Empty => None,
+            | Self::Iter {
                 storage,
                 components,
                 archetypes,
             } => match components {
-                Some(comps) => match comps.next() {
-                    Some(comp) => Some(comp),
-                    None => {
+                | Some(comps) => match comps.next() {
+                    | Some(comp) => Some(comp),
+                    | None => {
                         *components = None;
                         self.next()
-                    }
+                    },
                 },
-                None => unsafe {
-                    *components = storage
-                        .get_mut_unchecked(*archetypes.next()?)
-                        .map(|s| s.iter_mut());
+                | None => unsafe {
+                    *components = storage.get_mut_unchecked(*archetypes.next()?).map(|s| s.iter_mut());
                     self.next()
                 },
             },
         }
     }
 }
+

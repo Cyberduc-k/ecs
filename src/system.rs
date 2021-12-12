@@ -1,5 +1,5 @@
-use crate::query::{self, Fetch, IntoQuery, QueryIter, Readonly};
-use crate::resource::{AllResources, ResourceSet, Resources};
+use crate::query::{self, Fetch, IntoQuery, QueryIter};
+use crate::resource::{AllResources, Readonly, ResourceSet, Resources};
 use crate::subworld::SubWorld;
 use crate::world::World;
 
