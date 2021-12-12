@@ -1,3 +1,5 @@
+#![feature(once_cell)]
+
 pub mod archetype;
 pub mod component;
 pub mod entity;
@@ -9,3 +11,4 @@ pub mod storage;
 pub mod system;
 pub mod type_list;
 pub mod world;
+

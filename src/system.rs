@@ -1,11 +1,11 @@
-use crate::query::{self, Fetch, IntoQuery, Readonly, QueryIter};
+use crate::query::{self, Fetch, IntoQuery, QueryIter, Readonly};
 use crate::world::World;
 use std::marker::PhantomData;
 
-pub trait System<'a> {
-    type Data: SystemData<'a>;
+pub trait System {
+    type Data: for<'world> SystemData<'world>;
 
-    fn run(&mut self, data: <Self::Data as SystemData<'a>>::Result);
+    fn run(&mut self, data: <Self::Data as SystemData>::Result);
 }
 
 pub trait SystemData<'a>: Sized {
@@ -15,39 +15,43 @@ pub trait SystemData<'a>: Sized {
 }
 
 pub struct Query<T: IntoQuery>(PhantomData<fn() -> T::Fetch>);
+pub struct WorldData;
 
-pub struct SystemQuery<'a, T: for<'b> Fetch<'b>> {
+pub struct SystemQuery<'world, T: for<'fetch> Fetch<'fetch>> {
     world: *mut World,
     query: query::Query<T>,
-    _marker: PhantomData<fn(&'a World) -> T>
+    _marker: PhantomData<fn(&'world World) -> T>,
 }
 
-impl<'a, F> System<'a> for F
-where
-    F: FnMut(&'a mut World),
-{
-    type Data = &'a mut World;
+pub struct SystemFn<F: for<'world> FnMut(&'world mut World)>(pub F);
 
-    fn run(&mut self, world: &'a mut World) {
-        (self)(world)
+impl<F> System for SystemFn<F>
+where
+    F: for<'world> FnMut(&'world mut World),
+{
+    type Data = WorldData;
+
+    fn run(&mut self, world: &mut World) {
+        (self.0)(world)
     }
 }
 
-impl<'a> SystemData<'a> for &'a mut World {
-    type Result = &'a mut World;
+impl<'world> SystemData<'world> for WorldData {
+    type Result = &'world mut World;
 
-    fn fetch(world: &'a mut World) -> Self::Result {
+    #[inline]
+    fn fetch(world: &'world mut World) -> Self::Result {
         world
     }
 }
 
-impl<'a, T: IntoQuery> SystemData<'a> for Query<T>
+impl<'world, T: IntoQuery> SystemData<'world> for Query<T>
 where
-    T::Fetch: 'a,
+    T::Fetch: 'world,
 {
-    type Result = SystemQuery<'a, T::Fetch>;
+    type Result = SystemQuery<'world, T::Fetch>;
 
-    fn fetch(world: &'a mut World) -> Self::Result {
+    fn fetch(world: &'world mut World) -> Self::Result {
         SystemQuery {
             world,
             query: T::query(),
@@ -56,15 +60,15 @@ where
     }
 }
 
-impl<'a, T: for<'b> Fetch<'b>> SystemQuery<'a, T> {
-    pub fn iter<'b>(&'b mut self) -> QueryIter<'a, 'b, T>
+impl<'world, T: for<'fetch> Fetch<'fetch>> SystemQuery<'world, T> {
+    pub fn iter<'index>(&'index self) -> QueryIter<'world, 'index, T>
     where
         T: Readonly,
     {
         self.query.iter(unsafe { &*self.world })
     }
 
-    pub fn iter_mut<'b>(&'b mut self) -> QueryIter<'a, 'b, T> {
+    pub fn iter_mut<'index>(&'index self) -> QueryIter<'world, 'index, T> {
         self.query.iter_mut(unsafe { &mut *self.world })
     }
 }
@@ -95,3 +99,4 @@ macro_rules! impl_system_data {
 }
 
 impl_system_data!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
+

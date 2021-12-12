@@ -1,4 +1,4 @@
-use crate::system::{System, SystemData};
+use crate::system::{System, SystemData, SystemFn};
 use crate::type_list::{Append, Flatten};
 use crate::world::World;
 
@@ -6,20 +6,20 @@ pub struct Schedule<S> {
     systems: S,
 }
 
-pub struct DynSchedule<'a> {
-    systems: Vec<Box<dyn DynSystem<'a>>>,
+pub struct DynSchedule<'system> {
+    systems: Vec<Box<dyn DynSystem + 'system>>,
 }
 
-pub trait Systems<'a> {
-    fn run(&mut self, world: &'a mut World);
+pub trait Systems {
+    fn run(&mut self, world: &mut World);
 }
 
-pub trait DynSystem<'a>: 'a {
-    fn run(&mut self, world: &'a mut World);
+pub trait DynSystem {
+    fn run(&mut self, world: &mut World);
 }
 
-impl<'a, T: System<'a> + 'a> DynSystem<'a> for T {
-    fn run(&mut self, world: &'a mut World) {
+impl<T: System> DynSystem for T {
+    fn run(&mut self, world: &mut World) {
         let data = T::Data::fetch(world);
         System::run(self, data);
     }
@@ -27,20 +27,28 @@ impl<'a, T: System<'a> + 'a> DynSystem<'a> for T {
 
 impl Schedule<()> {
     pub fn new() -> Self {
-        Self {
-            systems: (),
-        }
+        Self { systems: () }
     }
 }
 
 impl<S> Schedule<S> {
-    pub fn with_system<'a, T>(self, system: T) -> Schedule<S::Output>
+    pub fn with_system<T>(self, system: T) -> Schedule<S::Output>
     where
         S: Append<T>,
-        T: System<'a>,
+        T: System,
     {
         Schedule {
             systems: self.systems.append(system),
+        }
+    }
+
+    pub fn with_system_fn<F>(self, func: F) -> Schedule<S::Output>
+    where
+        S: Append<SystemFn<F>>,
+        F: for<'world> FnMut(&'world mut World),
+    {
+        Schedule {
+            systems: self.systems.append(SystemFn(func)),
         }
     }
 }
@@ -53,39 +61,46 @@ impl<S: Flatten> Schedule<S> {
     }
 }
 
-impl<'a, S: Systems<'a>> Schedule<S> {
-    pub fn run(&mut self, world: &'a mut World) {
+impl<S: Systems> Schedule<S> {
+    pub fn run(&mut self, world: &mut World) {
         self.systems.run(world);
     }
 }
 
-impl<'a> DynSchedule<'a> {
+impl<'system> DynSchedule<'system> {
     pub fn new() -> Self {
-        Self {
-            systems: Vec::new(),
-        }
+        Self { systems: Vec::new() }
     }
 
-    pub fn with_system<S: System<'a> + 'a>(mut self, system: S) -> Self {
+    pub fn with_system<S: System + 'system>(mut self, system: S) -> Self {
         self.add_system(system);
         self
     }
 
-    pub fn add_system<S: DynSystem<'a>>(&mut self, system: S) {
+    pub fn with_system_fn<F: for<'world> FnMut(&'world mut World) + 'system>(self, func: F) -> Self {
+        self.with_system(SystemFn(func))
+    }
+
+    pub fn add_system<S: DynSystem + 'system>(&mut self, system: S) {
         self.systems.push(Box::new(system));
     }
 
-    pub fn run(&mut self, world: &'a mut World) {
+    pub fn add_system_fn<F: for<'world> FnMut(&'world mut World) + 'system>(&mut self, func: F) {
+        self.add_system(SystemFn(func));
+    }
+
+    pub fn run(&mut self, world: &mut World) {
         let world = world as *mut World;
 
-        self.systems.iter_mut().for_each(move |system| unsafe {
-            system.run(&mut *world)
-        });
+        self.systems
+            .iter_mut()
+            .for_each(move |system| unsafe { system.run(&mut *world) });
     }
 }
 
-impl Systems<'_> for () {
-    fn run(&mut self, _: &mut World) {}
+impl Systems for () {
+    fn run(&mut self, _: &mut World) {
+    }
 }
 
 macro_rules! impl_systems {
@@ -99,9 +114,9 @@ macro_rules! impl_systems {
     };
 
     (@impl $($ty:ident),+) => {
-        impl<'a, $($ty: System<'a>),+> Systems<'a> for ($($ty,)+) {
+        impl<$($ty: System),+> Systems for ($($ty,)+) {
             #[allow(non_snake_case)]
-            fn run(&mut self, world: &'a mut World) {
+            fn run(&mut self, world: &mut World) {
                 let world = world as *mut World;
                 let ($($ty,)+) = self;
                 $($ty.run($ty::Data::fetch(unsafe { &mut *world }));)+

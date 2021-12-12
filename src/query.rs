@@ -1,11 +1,11 @@
 mod entity;
+mod multiple;
 mod read;
 mod write;
-mod multiple;
 
+pub use multiple::Multiple;
 pub use read::Read;
 pub use write::Write;
-pub use multiple::Multiple;
 
 use crate::{
     archetype::{Archetype, ArchetypeIndex},
@@ -14,34 +14,36 @@ use crate::{
     storage::{ArchetypeStorage, Components, Storage},
     world::World,
 };
-use std::{
-    any::TypeId,
-    marker::PhantomData,
-};
+
+use std::{any::TypeId, lazy::SyncOnceCell, marker::PhantomData};
 
 pub trait IntoQuery: Sized {
-    type Fetch: for<'a> Fetch<'a>;
+    type Fetch: for<'world> Fetch<'world>;
 
     fn query() -> Query<Self::Fetch> {
         Query::default()
     }
 }
 
-pub struct Query<T: for<'a> Fetch<'a>> {
-    archetypes: Option<Vec<ArchetypeIndex>>,
+pub struct Query<T: for<'world> Fetch<'world>> {
+    archetypes: SyncOnceCell<Vec<ArchetypeIndex>>,
     _marker: PhantomData<T>,
 }
 
-pub struct QueryIter<'data, 'index, F: Fetch<'data>> {
+pub struct QueryIter<'world, 'index, F: Fetch<'world>> {
     iter: F::Iter,
     _marker: PhantomData<&'index [ArchetypeIndex]>,
 }
 
-pub trait Fetch<'a>: ComponentTypes {
-    type Item: 'a;
-    type Iter: Iterator<Item = Self::Item> + 'a;
+pub trait Fetch<'world>: ComponentTypes {
+    type Item: 'world;
+    type Iter: Iterator<Item = Self::Item> + 'world;
 
-    fn fetch(components: &'a Components, archetypes: &'a [Archetype], index: &'a [ArchetypeIndex]) -> Self::Iter;
+    fn fetch(
+        components: &'world Components,
+        archetypes: &'world [Archetype],
+        index: &'world [ArchetypeIndex],
+    ) -> Self::Iter;
 }
 
 pub trait ComponentTypes {
@@ -50,16 +52,16 @@ pub trait ComponentTypes {
 
 pub trait Readonly {}
 
-impl<T: for<'a> Fetch<'a>> Default for Query<T> {
+impl<T: for<'world> Fetch<'world>> Default for Query<T> {
     fn default() -> Self {
         Self {
-            archetypes: None,
+            archetypes: SyncOnceCell::new(),
             _marker: PhantomData,
         }
     }
 }
 
-impl<T: for<'a> Fetch<'a>> Clone for Query<T> {
+impl<T: for<'world> Fetch<'world>> Clone for Query<T> {
     fn clone(&self) -> Self {
         Self {
             archetypes: self.archetypes.clone(),
@@ -68,8 +70,8 @@ impl<T: for<'a> Fetch<'a>> Clone for Query<T> {
     }
 }
 
-impl<T: for<'a> Fetch<'a>> Query<T> {
-    pub fn get<'a>(&mut self, world: &'a World, entity: Entity) -> Option<<T as Fetch<'a>>::Item>
+impl<T: for<'world> Fetch<'world>> Query<T> {
+    pub fn get<'world>(&self, world: &'world World, entity: Entity) -> Option<<T as Fetch<'world>>::Item>
     where
         T: Readonly,
     {
@@ -81,7 +83,7 @@ impl<T: for<'a> Fetch<'a>> Query<T> {
         iter.nth(data.component().0 as usize)
     }
 
-    pub fn get_mut<'a>(&mut self, world: &'a mut World, entity: Entity) -> Option<<T as Fetch<'a>>::Item> {
+    pub fn get_mut<'world>(&self, world: &'world mut World, entity: Entity) -> Option<<T as Fetch<'world>>::Item> {
         let data = world.entities().get(entity)?;
         let index: &[ArchetypeIndex] = &[data.archetype()];
         let index = unsafe { std::mem::transmute(index) };
@@ -90,12 +92,12 @@ impl<T: for<'a> Fetch<'a>> Query<T> {
         iter.nth(data.component().0 as usize)
     }
 
-    pub fn iter<'a, 'b>(&'b mut self, world: &'a World) -> QueryIter<'a, 'b, T>
+    pub fn iter<'world, 'index>(&'index self, world: &'world World) -> QueryIter<'world, 'index, T>
     where
         T: Readonly,
     {
         let index = self.find_archetypes(world);
-        let index = unsafe { std::mem::transmute::<_, &'a [ArchetypeIndex]>(index) };
+        let index = unsafe { std::mem::transmute::<_, &'world [ArchetypeIndex]>(index) };
 
         QueryIter {
             iter: T::fetch(world.components(), world.archetypes(), index),
@@ -103,9 +105,9 @@ impl<T: for<'a> Fetch<'a>> Query<T> {
         }
     }
 
-    pub fn iter_mut<'a, 'b>(&'b mut self, world: &'a mut World) -> QueryIter<'a, 'b, T> {
+    pub fn iter_mut<'world, 'index>(&'index self, world: &'world mut World) -> QueryIter<'world, 'index, T> {
         let index = self.find_archetypes(world);
-        let index = unsafe { std::mem::transmute::<_, &'a [ArchetypeIndex]>(index) };
+        let index = unsafe { std::mem::transmute::<_, &'world [ArchetypeIndex]>(index) };
 
         QueryIter {
             iter: T::fetch(world.components(), world.archetypes(), index),
@@ -113,25 +115,26 @@ impl<T: for<'a> Fetch<'a>> Query<T> {
         }
     }
 
-    fn find_archetypes<'a>(&'a mut self, world: &World) -> &'a [ArchetypeIndex] {
-        match self.archetypes {
-            Some(ref archetypes) => archetypes,
-            None => {
-                let components = T::components();
-        
-                self.archetypes = Some(world.archetypes().iter().filter_map(|a| if a.layout.contains(&components) {
-                    Some(a.index)
-                } else {
-                    None
-                }).collect());
+    fn find_archetypes<'index>(&'index self, world: &World) -> &'index [ArchetypeIndex] {
+        self.archetypes.get_or_init(move || {
+            let components = T::components();
 
-                self.archetypes.as_ref().unwrap()
-            }
-        }
+            world
+                .archetypes()
+                .iter()
+                .filter_map(|a| {
+                    if a.layout.contains(&components) {
+                        Some(a.index)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
     }
 }
 
-impl<'data, 'index, T: Fetch<'data>> Iterator for QueryIter<'data, 'index, T> {
+impl<'world, 'index, T: Fetch<'world>> Iterator for QueryIter<'world, 'index, T> {
     type Item = T::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -152,7 +155,7 @@ macro_rules! impl_tuple_query {
     (@impl $($ty:ident),*) => {
         impl<$($ty: IntoQuery),*> IntoQuery for ($($ty,)*) {
             type Fetch = multiple::Multiple<($($ty::Fetch,)*)>;
-            
+
             fn query() -> Query<Self::Fetch> {
                 Query::default()
             }

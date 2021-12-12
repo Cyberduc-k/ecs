@@ -12,9 +12,9 @@ fn main() {
     let mut schedule = Schedule::new()
         .with_system(A)
         .with_system(B::default())
-        .with_system(|world| {})
+        .with_system_fn(|_world| {})
         .finish();
-    
+
     schedule.run(&mut world);
 }
 
@@ -26,13 +26,13 @@ struct A;
 #[derive(Default)]
 struct B<'a>(Vec<&'a i32>);
 
-impl<'a> System<'a> for A {
+impl System for A {
     type Data = (
         Query<(Read<i32>, Write<i8>)>,
         Query<(Entity, (Read<i32>, Read<&'static str>))>,
     );
 
-    fn run(&mut self, (mut a, mut b): <Self::Data as SystemData<'a>>::Result) {
+    fn run(&mut self, (a, b): <Self::Data as SystemData>::Result) {
         for (int, byte) in a.iter_mut() {
             println!("{:?}, {:?}", int, byte);
         }
@@ -43,11 +43,11 @@ impl<'a> System<'a> for A {
     }
 }
 
-impl<'a> System<'a> for B<'a> {
+impl<'a> System for B<'a> {
     type Data = Query<Read<i32>>;
 
-    fn run(&mut self, mut ints: <Self::Data as SystemData<'a>>::Result) {
-        self.0.extend(ints.iter());
+    fn run(&mut self, _ints: <Self::Data as SystemData>::Result) {
         dbg!(&self.0);
     }
 }
+
