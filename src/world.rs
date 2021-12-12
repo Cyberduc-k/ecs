@@ -3,6 +3,7 @@ use crate::component::{Component, ComponentSource};
 use crate::entity::{Entity, EntityData, EntityMap};
 use crate::insert::{EntityInserter, EntitySource};
 use crate::storage::{Components, Storage};
+use crate::subworld::{AnyWorld, SubWorld};
 use std::sync::atomic::AtomicU64;
 
 #[derive(Default)]
@@ -16,6 +17,12 @@ pub struct World {
 pub struct Entry<'a> {
     data: EntityData,
     world: &'a mut World,
+}
+
+pub struct StorageAccess<'world> {
+    components: &'world Components,
+    archetypes: &'world [Archetype],
+    entities: &'world EntityMap,
 }
 
 impl World {
@@ -67,21 +74,11 @@ impl World {
     }
 
     pub fn entry(&mut self, entity: Entity) -> Option<Entry> {
-        self.entities
-            .get(entity)
-            .map(move |data| Entry { data, world: self })
+        self.entities.get(entity).map(move |data| Entry { data, world: self })
     }
 
-    pub fn components(&self) -> &Components {
-        &self.components
-    }
-
-    pub fn archetypes(&self) -> &[Archetype] {
-        &self.archetypes
-    }
-
-    pub fn entities(&self) -> &EntityMap {
-        &self.entities
+    pub(crate) fn subworld(&self) -> SubWorld {
+        SubWorld { world: self }
     }
 
     fn remove_data(&mut self, data: EntityData) {
@@ -106,8 +103,8 @@ impl World {
         let layout = T::layout();
 
         match self.archetypes.iter().position(|a| &*a.layout == &layout) {
-            Some(idx) => ArchetypeIndex(idx as u32),
-            None => self.register_archetype(layout),
+            | Some(idx) => ArchetypeIndex(idx as u32),
+            | None => self.register_archetype(layout),
         }
     }
 
@@ -115,12 +112,7 @@ impl World {
         let index = ArchetypeIndex(self.archetypes.len() as u32);
         let archetype = Archetype::new(index, layout);
 
-        for (&ty, &ctor) in archetype
-            .layout
-            .components
-            .iter()
-            .zip(&archetype.layout.constructors)
-        {
+        for (&ty, &ctor) in archetype.layout.components.iter().zip(&archetype.layout.constructors) {
             let storage = self.components.get_or_insert(ty, ctor);
 
             storage.register_archetype(index);
@@ -128,6 +120,30 @@ impl World {
 
         self.archetypes.push(archetype);
         index
+    }
+}
+
+impl AnyWorld for World {
+    fn storage_access(&self) -> StorageAccess {
+        StorageAccess {
+            components: &self.components,
+            archetypes: &self.archetypes,
+            entities: &self.entities,
+        }
+    }
+}
+
+impl<'world> StorageAccess<'world> {
+    pub fn components(&self) -> &'world Components {
+        self.components
+    }
+
+    pub fn archetypes(&self) -> &'world [Archetype] {
+        self.archetypes
+    }
+
+    pub fn entities(&self) -> &'world EntityMap {
+        self.entities
     }
 }
 

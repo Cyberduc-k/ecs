@@ -12,7 +12,8 @@ use crate::{
     component::Component,
     entity::Entity,
     storage::{ArchetypeStorage, Components, Storage},
-    world::World,
+    subworld::AnyWorld,
+    world::StorageAccess,
 };
 
 use std::{any::TypeId, lazy::SyncOnceCell, marker::PhantomData};
@@ -71,55 +72,63 @@ impl<T: for<'world> Fetch<'world>> Clone for Query<T> {
 }
 
 impl<T: for<'world> Fetch<'world>> Query<T> {
-    pub fn get<'world>(&self, world: &'world World, entity: Entity) -> Option<<T as Fetch<'world>>::Item>
+    pub fn get<'world, W: AnyWorld>(&self, world: &'world W, entity: Entity) -> Option<<T as Fetch<'world>>::Item>
     where
         T: Readonly,
     {
-        let data = world.entities().get(entity)?;
+        let access = world.storage_access();
+        let data = access.entities().get(entity)?;
         let index: &[ArchetypeIndex] = &[data.archetype()];
         let index = unsafe { std::mem::transmute(index) };
-        let mut iter = T::fetch(world.components(), world.archetypes(), index);
+        let mut iter = T::fetch(access.components(), access.archetypes(), index);
 
         iter.nth(data.component().0 as usize)
     }
 
-    pub fn get_mut<'world>(&self, world: &'world mut World, entity: Entity) -> Option<<T as Fetch<'world>>::Item> {
-        let data = world.entities().get(entity)?;
+    pub fn get_mut<'world, W: AnyWorld>(
+        &self,
+        world: &'world mut W,
+        entity: Entity,
+    ) -> Option<<T as Fetch<'world>>::Item> {
+        let access = world.storage_access();
+        let data = access.entities().get(entity)?;
         let index: &[ArchetypeIndex] = &[data.archetype()];
         let index = unsafe { std::mem::transmute(index) };
-        let mut iter = T::fetch(world.components(), world.archetypes(), index);
+        let mut iter = T::fetch(access.components(), access.archetypes(), index);
 
         iter.nth(data.component().0 as usize)
     }
 
-    pub fn iter<'world, 'index>(&'index self, world: &'world World) -> QueryIter<'world, 'index, T>
+    pub fn iter<'world, 'index, W: AnyWorld>(&'index self, world: &'world W) -> QueryIter<'world, 'index, T>
     where
         T: Readonly,
     {
-        let index = self.find_archetypes(world);
+        let access = world.storage_access();
+        let index = self.find_archetypes(&access);
         let index = unsafe { std::mem::transmute::<_, &'world [ArchetypeIndex]>(index) };
 
         QueryIter {
-            iter: T::fetch(world.components(), world.archetypes(), index),
+            iter: T::fetch(access.components(), access.archetypes(), index),
             _marker: PhantomData,
         }
     }
 
-    pub fn iter_mut<'world, 'index>(&'index self, world: &'world mut World) -> QueryIter<'world, 'index, T> {
-        let index = self.find_archetypes(world);
+    pub fn iter_mut<'world, 'index, W: AnyWorld>(&'index self, world: &'world mut W) -> QueryIter<'world, 'index, T> {
+        let access = world.storage_access();
+        let index = self.find_archetypes(&access);
         let index = unsafe { std::mem::transmute::<_, &'world [ArchetypeIndex]>(index) };
 
         QueryIter {
-            iter: T::fetch(world.components(), world.archetypes(), index),
+            iter: T::fetch(access.components(), access.archetypes(), index),
             _marker: PhantomData,
         }
     }
 
-    fn find_archetypes<'index>(&'index self, world: &World) -> &'index [ArchetypeIndex] {
+    fn find_archetypes<'world, 'index>(&'index self, access: &StorageAccess<'world>) -> &'index [ArchetypeIndex] {
         self.archetypes.get_or_init(move || {
             let components = T::components();
 
-            world
+            access
                 .archetypes()
                 .iter()
                 .filter_map(|a| {

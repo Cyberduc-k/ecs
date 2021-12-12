@@ -56,6 +56,16 @@ impl<'resources, T: Resource> ResourceSet<'resources> for Write<T> {
     }
 }
 
+pub struct AllResources;
+
+impl<'resources> ResourceSet<'resources> for AllResources {
+    type Result = &'resources Resources;
+
+    unsafe fn fetch_unchecked(resources: &'resources Resources) -> Self::Result {
+        resources
+    }
+}
+
 unsafe impl Send for Resources {
 }
 

@@ -1,4 +1,5 @@
 use ecs::entity::Entity;
+use ecs::query::IntoQuery;
 use ecs::resource::Resources;
 use ecs::schedule::Schedule;
 use ecs::world::World;
@@ -11,6 +12,8 @@ fn main() {
     world.create(("test", 324i32));
     world.create((64i32, 16i8, false));
 
+    for i in <&i32>::query().iter(&world) {}
+
     let mut schedule = Schedule::new()
         .with_system(A)
         .with_system(B::default())
@@ -21,7 +24,7 @@ fn main() {
 }
 
 use ecs::query::{Read, Write};
-use ecs::system::{Query, System, SystemData};
+use ecs::system::{QuerySet, System};
 
 struct A;
 
@@ -29,12 +32,10 @@ struct A;
 struct B<'a>(Vec<&'a i32>);
 
 impl System for A {
-    type Data = (
-        Query<(Read<i32>, Write<i8>)>,
-        Query<(Entity, (Read<i32>, Read<&'static str>))>,
-    );
+    type Resources = ();
+    type Queries = ((Read<i32>, Write<i8>), (Entity, (Read<i32>, Read<&'static str>)));
 
-    fn run(&mut self, (a, b): <Self::Data as SystemData>::Result) {
+    fn run(&mut self, (mut a, b): <Self::Queries as QuerySet>::Result, _: ()) {
         for (int, byte) in a.iter_mut() {
             println!("{:?}, {:?}", int, byte);
         }
@@ -46,9 +47,10 @@ impl System for A {
 }
 
 impl<'a> System for B<'a> {
-    type Data = Query<Read<i32>>;
+    type Resources = ();
+    type Queries = (Read<i32>,);
 
-    fn run(&mut self, _ints: <Self::Data as SystemData>::Result) {
+    fn run(&mut self, _ints: <Self::Queries as QuerySet>::Result, _: ()) {
         dbg!(&self.0);
     }
 }

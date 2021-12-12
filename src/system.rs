@@ -1,27 +1,30 @@
 use crate::query::{self, Fetch, IntoQuery, QueryIter, Readonly};
-use crate::resource::Resources;
+use crate::resource::{AllResources, ResourceSet, Resources};
+use crate::subworld::SubWorld;
 use crate::world::World;
-use std::marker::PhantomData;
 
 pub trait System {
-    type Data: for<'data> SystemData<'data>;
+    type Resources: for<'resources> ResourceSet<'resources>;
+    type Queries: for<'world> QuerySet<'world>;
 
-    fn run(&mut self, data: <Self::Data as SystemData>::Result);
+    fn run(
+        &mut self,
+        queries: <Self::Queries as QuerySet>::Result,
+        resources: <Self::Resources as ResourceSet>::Result,
+    );
 }
 
-pub trait SystemData<'data>: Sized {
-    type Result: 'data;
+pub trait QuerySet<'world>: Sized {
+    type Result;
 
-    fn fetch(world: &'data mut World, resources: &'data mut Resources) -> Self::Result;
+    fn fetch(world: &'world mut World) -> Self::Result;
 }
 
-pub struct Query<T: IntoQuery>(PhantomData<fn() -> T::Fetch>);
-pub struct WorldAndResources;
+pub struct WholeWorld;
 
-pub struct SystemQuery<'data, T: for<'fetch> Fetch<'fetch>> {
-    world: *mut World,
+pub struct SystemQuery<'world, T: for<'fetch> Fetch<'fetch>> {
+    world: SubWorld<'world>,
     query: query::Query<T>,
-    _marker: PhantomData<fn(&'data World) -> T>,
 }
 
 pub struct SystemFn<F>(pub F);
@@ -30,84 +33,62 @@ impl<F> System for SystemFn<F>
 where
     F: for<'data> FnMut(&'data mut World, &'data Resources),
 {
-    type Data = WorldAndResources;
+    type Resources = AllResources;
+    type Queries = WholeWorld;
 
     #[inline]
-    fn run(&mut self, (world, resources): <Self::Data as SystemData>::Result) {
+    fn run(&mut self, world: &mut World, resources: &Resources) {
         (self.0)(world, resources)
     }
 }
 
-impl SystemData<'_> for () {
-    type Result = ();
+impl<'world> QuerySet<'world> for WholeWorld {
+    type Result = &'world mut World;
 
-    #[inline]
-    fn fetch(_: &mut World, _: &mut Resources) -> Self::Result {
-        ()
+    fn fetch(world: &'world mut World) -> Self::Result {
+        world
     }
 }
 
-impl<'data> SystemData<'data> for WorldAndResources {
-    type Result = (&'data mut World, &'data Resources);
-
-    #[inline]
-    fn fetch(world: &'data mut World, resources: &'data mut Resources) -> Self::Result {
-        (world, resources)
-    }
-}
-
-impl<'data, T: IntoQuery> SystemData<'data> for Query<T>
-where
-    T::Fetch: 'data,
-{
-    type Result = SystemQuery<'data, T::Fetch>;
-
-    fn fetch(world: &'data mut World, _: &'data mut Resources) -> Self::Result {
-        SystemQuery {
-            world,
-            query: T::query(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'data, T: for<'fetch> Fetch<'fetch>> SystemQuery<'data, T> {
-    pub fn iter<'index>(&'index self) -> QueryIter<'data, 'index, T>
+impl<'world, T: for<'fetch> Fetch<'fetch>> SystemQuery<'world, T> {
+    pub fn iter<'index>(&'index self) -> QueryIter<'world, 'index, T>
     where
         T: Readonly,
     {
-        self.query.iter(unsafe { &*self.world })
+        self.query.iter(self.world.world())
     }
 
-    pub fn iter_mut<'index>(&'index self) -> QueryIter<'data, 'index, T> {
-        self.query.iter_mut(unsafe { &mut *self.world })
+    pub fn iter_mut<'index>(&'index mut self) -> QueryIter<'world, 'index, T> {
+        self.query.iter_mut(unsafe { self.world.world_mut() })
     }
 }
 
-macro_rules! impl_system_data {
+macro_rules! impl_query_set {
     ($head:ident) => {
-        impl_system_data!(@impl $head);
+        impl_query_set!(@impl);
+        impl_query_set!(@impl $head);
     };
 
     ($head:ident, $($tail:ident),+) => {
-        impl_system_data!($($tail),+);
-        impl_system_data!(@impl $head, $($tail),+);
+        impl_query_set!($($tail),+);
+        impl_query_set!(@impl $head, $($tail),+);
     };
 
-    (@impl $($ty:ident),+) => {
-        impl<'data, $($ty: SystemData<'data>),+> SystemData<'data> for ($($ty,)+) {
-            type Result = ($($ty::Result,)*);
+    (@impl $($ty:ident),*) => {
+        impl<'world $(,$ty: IntoQuery)*> QuerySet<'world> for ($($ty,)*) {
+            type Result = ($(SystemQuery<'world, $ty::Fetch>,)*);
 
-            fn fetch(world: &'data mut World, resources: &'data mut Resources) -> Self::Result {
-                let world = world as *mut World;
-                let resources = resources as *mut Resources;
-
-                unsafe {
-                    ($($ty::fetch(&mut *world, &mut *resources),)*)
-                }
+            #[allow(unused_variables)]
+            fn fetch(world: &'world mut World) -> Self::Result {
+                ($({
+                    SystemQuery {
+                        world: world.subworld(),
+                        query: $ty::query(),
+                    }
+                },)*)
             }
         }
     };
 }
 
-impl_system_data!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
+impl_query_set!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);

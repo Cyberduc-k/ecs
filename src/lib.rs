@@ -9,6 +9,7 @@ pub mod query;
 pub mod resource;
 pub mod schedule;
 pub mod storage;
+pub mod subworld;
 pub mod system;
 pub mod type_list;
 pub mod world;

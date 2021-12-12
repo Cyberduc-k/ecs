@@ -1,5 +1,5 @@
-use crate::resource::Resources;
-use crate::system::{System, SystemData, SystemFn};
+use crate::resource::{ResourceSet, Resources};
+use crate::system::{QuerySet, System, SystemFn};
 use crate::type_list::{Append, Flatten};
 use crate::world::World;
 
@@ -43,8 +43,10 @@ pub trait DynSystem {
 
 impl<T: System> DynSystem for T {
     fn run(&mut self, world: &mut World, resources: &mut Resources) {
-        let data = T::Data::fetch(world, resources);
-        System::run(self, data);
+        let queries = T::Queries::fetch(world);
+        let resources = unsafe { T::Resources::fetch_unchecked(resources) };
+
+        System::run(self, queries, resources);
     }
 }
 
@@ -138,13 +140,9 @@ impl<'system> DynSchedule<'system> {
     }
 }
 
-impl Systems for () {
-    fn run(&mut self, _: &mut World, _: &mut Resources) {
-    }
-}
-
 macro_rules! impl_systems {
     ($head:ident) => {
+        impl_systems!(@impl);
         impl_systems!(@impl $head);
     };
 
@@ -153,16 +151,17 @@ macro_rules! impl_systems {
         impl_systems!(@impl $head, $($tail),+);
     };
 
-    (@impl $($ty:ident),+) => {
-        impl<$($ty: System),+> Systems for ($($ty,)+) {
-            #[allow(non_snake_case)]
+    (@impl $($ty:ident),*) => {
+        impl<$($ty: System),*> Systems for ($($ty,)*) {
+            #[allow(non_snake_case, unused_unsafe, unused_variables)]
             fn run(&mut self, world: &mut World, resources: &mut Resources) {
-                let world = world as *mut World;
-                let resources = resources as *mut Resources;
-                let ($($ty,)+) = self;
+                let ($($ty,)*) = self;
 
                 unsafe {
-                    $($ty.run($ty::Data::fetch(&mut *world, &mut *resources));)+
+                    $($ty.run(
+                        $ty::Queries::fetch(world),
+                        $ty::Resources::fetch_unchecked(resources),
+                    );)*
                 }
             }
         }
