@@ -8,10 +8,10 @@ pub trait System {
     fn run(&mut self, data: <Self::Data as SystemData>::Result);
 }
 
-pub trait SystemData<'a>: Sized {
-    type Result: 'a;
+pub trait SystemData<'world>: Sized {
+    type Result: 'world;
 
-    fn fetch(world: &'a mut World) -> Self::Result;
+    fn fetch(world: &'world mut World) -> Self::Result;
 }
 
 pub struct Query<T: IntoQuery>(PhantomData<fn() -> T::Fetch>);
@@ -31,8 +31,18 @@ where
 {
     type Data = WorldData;
 
+    #[inline]
     fn run(&mut self, world: &mut World) {
         (self.0)(world)
+    }
+}
+
+impl SystemData<'_> for () {
+    type Result = ();
+
+    #[inline]
+    fn fetch(_: &mut World) -> Self::Result {
+        ()
     }
 }
 
@@ -84,10 +94,10 @@ macro_rules! impl_system_data {
     };
 
     (@impl $($ty:ident),+) => {
-        impl<'a, $($ty: SystemData<'a>),+> SystemData<'a> for ($($ty,)+) {
+        impl<'world, $($ty: SystemData<'world>),+> SystemData<'world> for ($($ty,)+) {
             type Result = ($($ty::Result,)*);
 
-            fn fetch(world: &'a mut World) -> Self::Result {
+            fn fetch(world: &'world mut World) -> Self::Result {
                 let world = world as *mut World;
 
                 unsafe {
@@ -99,4 +109,3 @@ macro_rules! impl_system_data {
 }
 
 impl_system_data!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
-
