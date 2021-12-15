@@ -22,6 +22,12 @@ pub trait Flatten {
     fn flatten(self) -> Self::Output;
 }
 
+pub trait UnFlatten {
+    type Output;
+
+    fn unflatten(self) -> Self::Output;
+}
+
 impl<T> Prepend<T> for () {
     type Output = (T, Self);
 
@@ -117,3 +123,27 @@ macro_rules! impl_flatten {
 
 impl_flatten!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
 
+macro_rules! impl_unflatten {
+    ($head:ident) => {
+        impl_unflatten!(@impl $head);
+    };
+
+    ($head:ident, $($tail:ident),+) => {
+        impl_unflatten!($($tail),+);
+        impl_unflatten!(@impl $head, $($tail),+);
+    };
+
+    (@impl $($ty:ident),+) => {
+        impl<$($ty),+> UnFlatten for ($($ty,)+) {
+            type Output = cons!($($ty),+);
+
+            #[allow(non_snake_case)]
+            fn unflatten(self) -> Self::Output {
+                let ($($ty,)+) = self;
+                cons!($($ty),+)
+            }
+        }
+    };
+}
+
+impl_unflatten!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);

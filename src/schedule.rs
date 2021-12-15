@@ -1,6 +1,6 @@
 use crate::resource::{ResourceSet, Resources};
 use crate::system::{QuerySet, System, SystemFn};
-use crate::type_list::{Append, Flatten};
+use crate::type_list::{Append, Concat, Flatten, UnFlatten};
 use crate::world::World;
 
 pub struct Schedule<S> {
@@ -15,10 +15,10 @@ pub trait Systems {
     fn run(&mut self, world: &mut World, resources: &mut Resources);
 }
 
-pub trait SystemBundle<S> {
-    type Output;
-
-    fn load(self, schedule: Schedule<S>, resources: &mut Resources) -> Schedule<Self::Output>;
+pub trait SystemBundle<S: Systems + UnFlatten> {
+    fn load<T>(self, schedule: Schedule<T>, resources: &mut Resources) -> Schedule<T::Output>
+    where
+        T: Concat<S>;
 }
 
 pub trait DynSystemBundle<'system>: 'system {
@@ -55,6 +55,17 @@ impl<S> Schedule<S> {
         }
     }
 
+    pub fn with_systems<T>(self, systems: T) -> Schedule<S::Output>
+    where
+        T: UnFlatten,
+        S: Concat<T::Output>,
+        T::Output: Systems,
+    {
+        Schedule {
+            systems: self.systems.concat(systems.unflatten()),
+        }
+    }
+
     pub fn with_system_fn<F>(self, func: F) -> Schedule<S::Output>
     where
         S: Append<SystemFn<F>>,
@@ -65,9 +76,11 @@ impl<S> Schedule<S> {
         }
     }
 
-    pub fn with_bundle<B>(self, bundle: B, resources: &mut Resources) -> Schedule<B::Output>
+    pub fn with_bundle<B, T>(self, bundle: B, resources: &mut Resources) -> Schedule<S::Output>
     where
-        B: SystemBundle<S>,
+        B: SystemBundle<T>,
+        T: Systems + UnFlatten,
+        S: Concat<T>,
     {
         bundle.load(self, resources)
     }
