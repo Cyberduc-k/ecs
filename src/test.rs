@@ -12,7 +12,7 @@ fn main() {
     world.create(("test", 324i32));
     world.create((64i32, 16i8, false));
 
-    for i in <&i32>::query().iter(&world) {}
+    for _i in <&i32>::query().iter(&world) {}
 
     let mut schedule = Schedule::new()
         .with_system(A)

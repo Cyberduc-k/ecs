@@ -15,7 +15,7 @@ use crate::{
     world::StorageAccess,
 };
 
-use std::{any::TypeId, lazy::SyncOnceCell, marker::PhantomData};
+use std::{any::TypeId, sync::Once, marker::PhantomData};
 
 pub trait IntoQuery: Sized {
     type Fetch: for<'world> Fetch<'world>;
@@ -26,7 +26,8 @@ pub trait IntoQuery: Sized {
 }
 
 pub struct Query<T: for<'world> Fetch<'world>> {
-    archetypes: SyncOnceCell<Vec<ArchetypeIndex>>,
+    init: Once,
+    archetypes: Vec<ArchetypeIndex>,
     _marker: PhantomData<T>,
 }
 
@@ -53,7 +54,8 @@ pub trait ComponentTypes {
 impl<T: for<'world> Fetch<'world>> Default for Query<T> {
     fn default() -> Self {
         Self {
-            archetypes: SyncOnceCell::new(),
+            init: Once::new(),
+            archetypes: Vec::new(),
             _marker: PhantomData,
         }
     }
@@ -61,7 +63,14 @@ impl<T: for<'world> Fetch<'world>> Default for Query<T> {
 
 impl<T: for<'world> Fetch<'world>> Clone for Query<T> {
     fn clone(&self) -> Self {
+        let init = Once::new();
+
+        if self.init.is_completed() {
+            init.call_once(|| {});
+        }
+
         Self {
+            init,
             archetypes: self.archetypes.clone(),
             _marker: PhantomData,
         }
@@ -122,21 +131,27 @@ impl<T: for<'world> Fetch<'world>> Query<T> {
     }
 
     fn find_archetypes<'world, 'index>(&'index self, access: &StorageAccess<'world>) -> &'index [ArchetypeIndex] {
-        self.archetypes.get_or_init(move || {
-            let components = T::components();
+        if !self.init.is_completed() {
+            let archetypes = &self.archetypes as *const Vec<_> as *mut Vec<_>;
 
-            access
-                .archetypes()
-                .iter()
-                .filter_map(|a| {
-                    if a.layout.contains(&components) {
-                        Some(a.index)
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        })
+            self.init.call_once(move || unsafe {
+                let components = T::components();
+    
+                *archetypes = access
+                    .archetypes()
+                    .iter()
+                    .filter_map(|a| {
+                        if a.layout.contains(&components) {
+                            Some(a.index)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+            });
+        }
+
+        &self.archetypes
     }
 }
 
