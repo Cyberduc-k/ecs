@@ -15,10 +15,12 @@ pub trait Systems {
     fn run(&mut self, world: &mut World, resources: &mut Resources);
 }
 
-pub trait SystemBundle<S: Systems + UnFlatten> {
-    fn load<T>(self, schedule: Schedule<T>, resources: &mut Resources) -> Schedule<T::Output>
+pub trait SystemBundle {
+    type Added: Systems + UnFlatten;
+
+    fn load<S>(self, schedule: Schedule<S>, resources: &mut Resources) -> Schedule<S::Output>
     where
-        T: Concat<S>;
+        S: Concat<Self::Added>;
 }
 
 pub trait DynSystemBundle<'system>: 'system {
@@ -76,11 +78,10 @@ impl<S> Schedule<S> {
         }
     }
 
-    pub fn with_bundle<B, T>(self, bundle: B, resources: &mut Resources) -> Schedule<S::Output>
+    pub fn with_bundle<B>(self, bundle: B, resources: &mut Resources) -> Schedule<S::Output>
     where
-        B: SystemBundle<T>,
-        T: Systems + UnFlatten,
-        S: Concat<T>,
+        B: SystemBundle,
+        S: Concat<B::Added>,
     {
         bundle.load(self, resources)
     }
