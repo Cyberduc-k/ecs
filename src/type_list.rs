@@ -17,13 +17,13 @@ pub trait Concat<T> {
 }
 
 pub trait Flatten {
-    type Output;
+    type Output: UnFlatten;
 
     fn flatten(self) -> Self::Output;
 }
 
 pub trait UnFlatten {
-    type Output;
+    type Output: Flatten;
 
     fn unflatten(self) -> Self::Output;
 }
@@ -84,6 +84,14 @@ impl Flatten for () {
     }
 }
 
+impl UnFlatten for () {
+    type Output = ();
+
+    fn unflatten(self) -> Self::Output {
+        self
+    }
+}
+
 macro_rules! cons {
     () => {
         ()
@@ -118,22 +126,7 @@ macro_rules! impl_flatten {
                 ($($ty,)+)
             }
         }
-    };
-}
 
-impl_flatten!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
-
-macro_rules! impl_unflatten {
-    ($head:ident) => {
-        impl_unflatten!(@impl $head);
-    };
-
-    ($head:ident, $($tail:ident),+) => {
-        impl_unflatten!($($tail),+);
-        impl_unflatten!(@impl $head, $($tail),+);
-    };
-
-    (@impl $($ty:ident),+) => {
         impl<$($ty),+> UnFlatten for ($($ty,)+) {
             type Output = cons!($($ty),+);
 
@@ -146,4 +139,4 @@ macro_rules! impl_unflatten {
     };
 }
 
-impl_unflatten!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
+impl_flatten!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);

@@ -20,7 +20,7 @@ pub trait SystemBundle {
 
     fn load<S>(self, schedule: Schedule<S>, resources: &mut Resources) -> Schedule<S::Output>
     where
-        S: Concat<Self::Added>;
+        S: Concat<<Self::Added as UnFlatten>::Output>;
 }
 
 pub trait DynSystemBundle<'system>: 'system {
@@ -80,7 +80,7 @@ impl<S> Schedule<S> {
     pub fn with_bundle<B>(self, bundle: B, resources: &mut Resources) -> Schedule<S::Output>
     where
         B: SystemBundle,
-        S: Concat<B::Added>,
+        S: Concat<<B::Added as UnFlatten>::Output>,
     {
         bundle.load(self, resources)
     }
