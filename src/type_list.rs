@@ -10,6 +10,12 @@ pub trait Append<T> {
     fn append(self, other: T) -> Self::Output;
 }
 
+pub trait Concat<T> {
+    type Output;
+
+    fn concat(self, other: T) -> Self::Output;
+}
+
 pub trait Flatten {
     type Output;
 
@@ -45,6 +51,22 @@ impl<T, A, B: Append<T>> Append<T> for (A, B) {
 
     fn append(self, other: T) -> Self::Output {
         (self.0, self.1.append(other))
+    }
+}
+
+impl<T> Concat<T> for () {
+    type Output = T;
+
+    fn concat(self, other: T) -> Self::Output {
+        other
+    }
+}
+
+impl<T, A, B: Concat<T>> Concat<T> for (A, B) {
+    type Output = (A, B::Output);
+
+    fn concat(self, other: T) -> Self::Output {
+        (self.0, self.1.concat(other))
     }
 }
 
@@ -94,3 +116,4 @@ macro_rules! impl_flatten {
 }
 
 impl_flatten!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
+
