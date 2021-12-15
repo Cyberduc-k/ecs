@@ -18,23 +18,11 @@ pub trait Systems {
 pub trait SystemBundle<S> {
     type Output;
 
-    fn with_systems(self, schedule: Schedule<S>) -> Schedule<Self::Output>;
+    fn load(self, schedule: Schedule<S>, resources: &mut Resources) -> Schedule<Self::Output>;
 }
 
 pub trait DynSystemBundle<'system>: 'system {
-    fn add_systems(self, schedule: &mut DynSchedule<'system>);
-}
-
-impl<S, A: System, B: System> SystemBundle<S> for (A, B)
-where
-    S: Append<A>,
-    <S as Append<A>>::Output: Append<B>,
-{
-    type Output = <<S as Append<A>>::Output as Append<B>>::Output;
-
-    fn with_systems(self, schedule: Schedule<S>) -> Schedule<Self::Output> {
-        schedule.with_system(self.0).with_system(self.1)
-    }
+    fn load(self, schedule: &mut DynSchedule<'system>, resources: &mut Resources);
 }
 
 pub trait DynSystem {
@@ -77,11 +65,11 @@ impl<S> Schedule<S> {
         }
     }
 
-    pub fn with_bundle<B>(self, bundle: B) -> Schedule<B::Output>
+    pub fn with_bundle<B>(self, bundle: B, resources: &mut Resources) -> Schedule<B::Output>
     where
         B: SystemBundle<S>,
     {
-        bundle.with_systems(self)
+        bundle.load(self, resources)
     }
 }
 
@@ -113,8 +101,8 @@ impl<'system> DynSchedule<'system> {
         self.with_system(SystemFn(func))
     }
 
-    pub fn with_bundle<B: DynSystemBundle<'system>>(mut self, bundle: B) -> Self {
-        self.add_bundle(bundle);
+    pub fn with_bundle<B: DynSystemBundle<'system>>(mut self, bundle: B, resources: &mut Resources) -> Self {
+        self.add_bundle(bundle, resources);
         self
     }
 
@@ -126,8 +114,8 @@ impl<'system> DynSchedule<'system> {
         self.add_system(SystemFn(func));
     }
 
-    pub fn add_bundle<B: DynSystemBundle<'system>>(&mut self, bundle: B) {
-        bundle.add_systems(self);
+    pub fn add_bundle<B: DynSystemBundle<'system>>(&mut self, bundle: B, resources: &mut Resources) {
+        bundle.load(self, resources);
     }
 
     pub fn run(&mut self, world: &mut World, resources: &mut Resources) {
