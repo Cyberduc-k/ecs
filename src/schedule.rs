@@ -59,9 +59,8 @@ impl<S> Schedule<S> {
 
     pub fn with_systems<T>(self, systems: T) -> Schedule<S::Output>
     where
-        T: UnFlatten,
+        T: Systems + UnFlatten,
         S: Concat<T::Output>,
-        T::Output: Systems,
     {
         Schedule {
             systems: self.systems.concat(systems.unflatten()),
