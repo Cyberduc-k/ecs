@@ -34,6 +34,9 @@ pub trait Readonly {}
 pub struct Read<T>(PhantomData<*const T>);
 pub struct Write<T>(PhantomData<*mut T>);
 
+pub struct TryRead<T>(PhantomData<Option<*const T>>);
+pub struct TryWrite<T>(PhantomData<Option<*mut T>>);
+
 impl<T: 'static> Resource for T {
 }
 
@@ -49,7 +52,7 @@ impl<'resources, T: Resource> ResourceSet<'resources> for Read<T> {
     type Result = AtomicRef<'resources, T>;
 
     unsafe fn fetch_unchecked(resources: &'resources Resources) -> Self::Result {
-        resources.get().unwrap()
+        resources.get()
     }
 }
 
@@ -57,7 +60,23 @@ impl<'resources, T: Resource> ResourceSet<'resources> for Write<T> {
     type Result = AtomicRefMut<'resources, T>;
 
     unsafe fn fetch_unchecked(resources: &'resources Resources) -> Self::Result {
-        resources.get_mut().unwrap()
+        resources.get_mut()
+    }
+}
+
+impl<'resources, T: Resource> ResourceSet<'resources> for TryRead<T> {
+    type Result = Option<AtomicRef<'resources, T>>;
+
+    unsafe fn fetch_unchecked(resources: &'resources Resources) -> Self::Result {
+        resources.try_get()
+    }
+}
+
+impl<'resources, T: Resource> ResourceSet<'resources> for TryWrite<T> {
+    type Result = Option<AtomicRefMut<'resources, T>>;
+
+    unsafe fn fetch_unchecked(resources: &'resources Resources) -> Self::Result {
+        resources.try_get_mut()
     }
 }
 
@@ -95,14 +114,22 @@ impl Resources {
             .map(|v| *v)
     }
 
-    pub fn get<T: Resource>(&self) -> Option<AtomicRef<T>> {
+    pub fn get<T: Resource>(&self) -> AtomicRef<T> {
+        self.try_get().unwrap()
+    }
+
+    pub fn get_mut<T: Resource>(&self) -> AtomicRefMut<T> {
+        self.try_get_mut().unwrap()
+    }
+
+    pub fn try_get<T: Resource>(&self) -> Option<AtomicRef<T>> {
         self.resources.get(&TypeId::of::<T>()).map(|v| {
             let borrow = v.borrow();
             AtomicRef::map(borrow, |v| v.downcast_ref().unwrap())
         })
     }
 
-    pub fn get_mut<T: Resource>(&self) -> Option<AtomicRefMut<T>> {
+    pub fn try_get_mut<T: Resource>(&self) -> Option<AtomicRefMut<T>> {
         self.resources.get(&TypeId::of::<T>()).map(|v| {
             let borrow = v.borrow_mut();
             AtomicRefMut::map(borrow, |v| v.downcast_mut().unwrap())

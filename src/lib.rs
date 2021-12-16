@@ -1,6 +1,7 @@
 pub mod archetype;
 pub mod component;
 pub mod entity;
+pub mod filter;
 pub mod insert;
 pub mod modify;
 pub mod query;

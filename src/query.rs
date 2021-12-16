@@ -2,14 +2,17 @@ mod entity;
 mod multiple;
 mod read;
 mod write;
+mod try_read;
+mod try_write;
 
-pub use crate::resource::{Read, Readonly, Write};
+pub use crate::resource::{Read, Readonly, Write, TryRead, TryWrite};
 pub use multiple::Multiple;
 
 use crate::{
     archetype::{Archetype, ArchetypeIndex},
     component::Component,
     entity::Entity,
+    filter::LayoutFilter,
     storage::{ArchetypeStorage, Components, Storage},
     subworld::AnyWorld,
     world::StorageAccess,
@@ -39,6 +42,7 @@ pub struct QueryIter<'world, 'index, F: Fetch<'world>> {
 pub trait Fetch<'world>: ComponentTypes {
     type Item: 'world;
     type Iter: Iterator<Item = Self::Item> + 'world;
+    type Filter: LayoutFilter;
 
     fn fetch(
         components: &'world Components,

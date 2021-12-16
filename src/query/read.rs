@@ -1,4 +1,5 @@
 use super::*;
+use crate::filter::ComponentFilter;
 use crate::resource::Read;
 
 pub enum ReadIter<'a, T: Component> {
@@ -21,6 +22,7 @@ impl<T: Component> IntoQuery for Read<T> {
 impl<'a, T: Component> Fetch<'a> for Read<T> {
     type Item = &'a T;
     type Iter = ReadIter<'a, T>;
+    type Filter = ComponentFilter<T>;
 
     fn fetch(components: &'a Components, _: &'a [Archetype], index: &'a [ArchetypeIndex]) -> Self::Iter {
         match components.get::<T>() {
@@ -69,4 +71,3 @@ impl<'a, T: Component> Iterator for ReadIter<'a, T> {
         }
     }
 }
-

@@ -1,3 +1,31 @@
+pub fn prepend<T, E>(tuple: T, elem: E) -> <<T::Output as Prepend<E>>::Output as Flatten>::Output
+where
+    T: UnFlatten,
+    T::Output: Prepend<E>,
+    <T::Output as Prepend<E>>::Output: Flatten,
+{
+    tuple.unflatten().prepend(elem).flatten()
+}
+
+pub fn append<T, E>(tuple: T, elem: E) -> <<T::Output as Append<E>>::Output as Flatten>::Output
+where
+    T: UnFlatten,
+    T::Output: Append<E>,
+    <T::Output as Append<E>>::Output: Flatten,
+{
+    tuple.unflatten().append(elem).flatten()
+}
+
+pub fn concat<A, B>(a: A, b: B) -> <<A::Output as Concat<B::Output>>::Output as Flatten>::Output
+where
+    A: UnFlatten,
+    B: UnFlatten,
+    A::Output: Concat<B::Output>,
+    <A::Output as Concat<B::Output>>::Output: Flatten,
+{
+    a.unflatten().concat(b.unflatten()).flatten()
+}
+
 pub trait Prepend<T> {
     type Output;
 
