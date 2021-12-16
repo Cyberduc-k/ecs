@@ -1,4 +1,4 @@
-use crate::query::{self, Fetch, IntoQuery, QueryIter};
+use crate::query::{self, IntoQuery, QueryIter};
 use crate::resource::{AllResources, Readonly, ResourceSet, Resources};
 use crate::subworld::SubWorld;
 use crate::world::World;
@@ -15,16 +15,16 @@ pub trait System {
 }
 
 pub trait QuerySet<'world>: Sized {
-    type Result;
+    type Result: 'world;
 
     fn fetch(world: &'world mut World) -> Self::Result;
 }
 
 pub struct WholeWorld;
 
-pub struct SystemQuery<'world, T: for<'fetch> Fetch<'fetch>> {
+pub struct SystemQuery<'world, T: IntoQuery> {
     world: SubWorld<'world>,
-    query: query::Query<T>,
+    query: query::Query<T::Fetch>,
 }
 
 pub struct SystemFn<F>(pub F);
@@ -50,15 +50,15 @@ impl<'world> QuerySet<'world> for WholeWorld {
     }
 }
 
-impl<'world, T: for<'fetch> Fetch<'fetch>> SystemQuery<'world, T> {
-    pub fn iter<'index>(&'index self) -> QueryIter<'world, 'index, T>
+impl<'world, T: IntoQuery> SystemQuery<'world, T> {
+    pub fn iter<'index>(&'index self) -> QueryIter<'world, 'index, T::Fetch>
     where
-        T: Readonly,
+        T::Fetch: Readonly,
     {
         self.query.iter(self.world.world())
     }
 
-    pub fn iter_mut<'index>(&'index mut self) -> QueryIter<'world, 'index, T> {
+    pub fn iter_mut<'index>(&'index mut self) -> QueryIter<'world, 'index, T::Fetch> {
         self.query.iter_mut(unsafe { self.world.world_mut() })
     }
 }
@@ -75,8 +75,8 @@ macro_rules! impl_query_set {
     };
 
     (@impl $($ty:ident),*) => {
-        impl<'world $(,$ty: IntoQuery)*> QuerySet<'world> for ($($ty,)*) {
-            type Result = ($(SystemQuery<'world, $ty::Fetch>,)*);
+        impl<'world $(,$ty: IntoQuery + 'world)*> QuerySet<'world> for ($($ty,)*) {
+            type Result = ($(SystemQuery<'world, $ty>,)*);
 
             #[allow(unused_variables)]
             fn fetch(world: &'world mut World) -> Self::Result {
