@@ -7,9 +7,7 @@ pub struct VecStorage<T> {
 
 impl<T> Default for VecStorage<T> {
     fn default() -> Self {
-        Self {
-            vec: Vec::default(),
-        }
+        Self { vec: Vec::default() }
     }
 }
 

@@ -50,14 +50,8 @@ impl<'a, T: Component> Storage<'a, T> for SingleStorage<T> {
         let mut items = items.into_iter();
 
         if let Some(item) = items.next() {
-            assert!(
-                self.value.is_none(),
-                "SingleStorage can only hold one value"
-            );
-            assert!(
-                items.next().is_none(),
-                "SingleStorage can only hold one value"
-            );
+            assert!(self.value.is_none(), "SingleStorage can only hold one value");
+            assert!(items.next().is_none(), "SingleStorage can only hold one value");
             self.value = Some(item);
         }
     }

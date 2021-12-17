@@ -1,6 +1,6 @@
 use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
 use std::{
-    any::{Any, TypeId},
+    any::{type_name, Any, TypeId},
     collections::HashMap,
     marker::PhantomData,
 };
@@ -37,8 +37,10 @@ pub struct Write<T>(PhantomData<*mut T>);
 pub struct TryRead<T>(PhantomData<Option<*const T>>);
 pub struct TryWrite<T>(PhantomData<Option<*mut T>>);
 
-impl<T> Readonly for Read<T> {}
-impl<T> Readonly for TryRead<T> {}
+impl<T> Readonly for Read<T> {
+}
+impl<T> Readonly for TryRead<T> {
+}
 
 impl<T: 'static> Resource for T {
 }
@@ -116,11 +118,13 @@ impl Resources {
     }
 
     pub fn get<T: Resource>(&self) -> AtomicRef<T> {
-        self.try_get().unwrap()
+        self.try_get()
+            .expect(&format!("Resource `{}` not available", type_name::<T>()))
     }
 
     pub fn get_mut<T: Resource>(&self) -> AtomicRefMut<T> {
-        self.try_get_mut().unwrap()
+        self.try_get_mut()
+            .expect(&format!("Resource `{}` not available", type_name::<T>()))
     }
 
     pub fn try_get<T: Resource>(&self) -> Option<AtomicRef<T>> {

@@ -65,4 +65,3 @@ impl<'a, T: Component> Iterator for WriteIter<'a, T> {
         }
     }
 }
-

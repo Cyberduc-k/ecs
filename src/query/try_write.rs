@@ -15,7 +15,7 @@ pub enum TryWriteIterState<'a, T: Component> {
     },
     Empty {
         len: usize,
-    }
+    },
 }
 
 impl<T: Component> IntoQuery for Option<&mut T> {
@@ -53,14 +53,14 @@ impl<'a, T: Component> Iterator for TryWriteIter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.state {
-            TryWriteIterState::Occupied { components } => match components.next() {
-                Some(value) => Some(Some(value)),
-                None => {
+            | TryWriteIterState::Occupied { components } => match components.next() {
+                | Some(value) => Some(Some(value)),
+                | None => {
                     self.next_state()?;
                     self.next()
-                }
+                },
             },
-            TryWriteIterState::Empty { len } => {
+            | TryWriteIterState::Empty { len } => {
                 if *len > 0 {
                     *len -= 1;
                     Some(None)
@@ -68,7 +68,7 @@ impl<'a, T: Component> Iterator for TryWriteIter<'a, T> {
                     self.next_state()?;
                     self.next()
                 }
-            }
+            },
         }
     }
 }
@@ -78,17 +78,17 @@ impl<'a, T: Component> TryWriteIter<'a, T> {
         let archetype = *self.index.next()?;
 
         self.state = match self.storage {
-            Some(storage) => match unsafe { storage.get_mut_unchecked(archetype) } {
-                Some(components) => TryWriteIterState::Occupied {
+            | Some(storage) => match unsafe { storage.get_mut_unchecked(archetype) } {
+                | Some(components) => TryWriteIterState::Occupied {
                     components: components.iter_mut(),
                 },
-                None => TryWriteIterState::Empty {
+                | None => TryWriteIterState::Empty {
                     len: self.archetypes[archetype.0 as usize].entities.len(),
                 },
             },
-            None => TryWriteIterState::Empty {
+            | None => TryWriteIterState::Empty {
                 len: self.archetypes[archetype.0 as usize].entities.len(),
-            }
+            },
         };
 
         Some(())

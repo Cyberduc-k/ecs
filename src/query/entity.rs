@@ -1,6 +1,6 @@
+use super::*;
 use crate::entity::Entity;
 use crate::filter::Any;
-use super::*;
 
 pub struct EntityIter<'a> {
     entities: Option<std::slice::Iter<'a, Entity>>,
@@ -25,7 +25,8 @@ impl<'a> Fetch<'a> for Entity {
     }
 }
 
-impl Readonly for Entity {}
+impl Readonly for Entity {
+}
 
 impl FetchFilter for Entity {
     type Layout = Any;
@@ -36,17 +37,17 @@ impl<'a> Iterator for EntityIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.entities {
-            Some(ref mut entities) => match entities.next() {
-                Some(entity) => Some(*entity),
-                None => {
+            | Some(ref mut entities) => match entities.next() {
+                | Some(entity) => Some(*entity),
+                | None => {
                     self.entities = None;
                     self.next()
-                }
+                },
             },
-            None => {
+            | None => {
                 self.entities = Some(self.archetypes[self.index.next()?.0 as usize].entities.iter());
                 self.next()
-            }
+            },
         }
     }
 }

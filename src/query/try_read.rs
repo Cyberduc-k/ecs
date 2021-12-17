@@ -15,7 +15,7 @@ pub enum TryReadIterState<'a, T: Component> {
     },
     Empty {
         len: usize,
-    }
+    },
 }
 
 impl<T: Component> IntoQuery for Option<&T> {
@@ -53,14 +53,14 @@ impl<'a, T: Component> Iterator for TryReadIter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.state {
-            TryReadIterState::Occupied { components } => match components.next() {
-                Some(value) => Some(Some(value)),
-                None => {
+            | TryReadIterState::Occupied { components } => match components.next() {
+                | Some(value) => Some(Some(value)),
+                | None => {
                     self.next_state()?;
                     self.next()
-                }
+                },
             },
-            TryReadIterState::Empty { len } => {
+            | TryReadIterState::Empty { len } => {
                 if *len > 0 {
                     *len -= 1;
                     Some(None)
@@ -68,7 +68,7 @@ impl<'a, T: Component> Iterator for TryReadIter<'a, T> {
                     self.next_state()?;
                     self.next()
                 }
-            }
+            },
         }
     }
 }
@@ -78,17 +78,17 @@ impl<'a, T: Component> TryReadIter<'a, T> {
         let archetype = *self.index.next()?;
 
         self.state = match self.storage {
-            Some(storage) => match storage.get(archetype) {
-                Some(components) => TryReadIterState::Occupied {
+            | Some(storage) => match storage.get(archetype) {
+                | Some(components) => TryReadIterState::Occupied {
                     components: components.iter(),
                 },
-                None => TryReadIterState::Empty {
+                | None => TryReadIterState::Empty {
                     len: self.archetypes[archetype.0 as usize].entities.len(),
                 },
             },
-            None => TryReadIterState::Empty {
+            | None => TryReadIterState::Empty {
                 len: self.archetypes[archetype.0 as usize].entities.len(),
-            }
+            },
         };
 
         Some(())
