@@ -35,9 +35,6 @@ impl<'a, T: Component> Fetch<'a> for Read<T> {
     }
 }
 
-impl<T: Component> Readonly for Read<T> {
-}
-
 impl<T: Component> FetchFilter for Read<T> {
     type Layout = ComponentFilter<T>;
 }

@@ -37,6 +37,9 @@ pub struct Write<T>(PhantomData<*mut T>);
 pub struct TryRead<T>(PhantomData<Option<*const T>>);
 pub struct TryWrite<T>(PhantomData<Option<*mut T>>);
 
+impl<T> Readonly for Read<T> {}
+impl<T> Readonly for TryRead<T> {}
+
 impl<T: 'static> Resource for T {
 }
 
@@ -80,9 +83,7 @@ impl<'resources, T: Resource> ResourceSet<'resources> for TryWrite<T> {
     }
 }
 
-pub struct AllResources;
-
-impl<'resources> ResourceSet<'resources> for AllResources {
+impl<'resources> ResourceSet<'resources> for Resources {
     type Result = &'resources Resources;
 
     unsafe fn fetch_unchecked(resources: &'resources Resources) -> Self::Result {
