@@ -18,7 +18,7 @@ use crate::{
     world::StorageAccess,
 };
 
-use std::{any::TypeId, sync::Once, marker::PhantomData};
+use std::{sync::Once, marker::PhantomData};
 
 pub trait IntoQuery: Sized {
     type Fetch: for<'world> Fetch<'world>;
@@ -39,10 +39,9 @@ pub struct QueryIter<'world, 'index, F: Fetch<'world>> {
     _marker: PhantomData<&'index [ArchetypeIndex]>,
 }
 
-pub trait Fetch<'world>: ComponentTypes {
+pub trait Fetch<'world>: FetchFilter {
     type Item: 'world;
     type Iter: Iterator<Item = Self::Item> + 'world;
-    type Filter: LayoutFilter;
 
     fn fetch(
         components: &'world Components,
@@ -51,8 +50,8 @@ pub trait Fetch<'world>: ComponentTypes {
     ) -> Self::Iter;
 }
 
-pub trait ComponentTypes {
-    fn components() -> Vec<TypeId>;
+pub trait FetchFilter {
+    type Layout: LayoutFilter + Default;
 }
 
 impl<T: for<'world> Fetch<'world>> Default for Query<T> {
@@ -139,13 +138,13 @@ impl<T: for<'world> Fetch<'world>> Query<T> {
             let archetypes = &self.archetypes as *const Vec<_> as *mut Vec<_>;
 
             self.init.call_once(move || unsafe {
-                let components = T::components();
+                let filter = T::Layout::default();
     
                 *archetypes = access
                     .archetypes()
                     .iter()
                     .filter_map(|a| {
-                        if a.layout.contains(&components) {
+                        if filter.matches(&a.layout.components) {
                             Some(a.index)
                         } else {
                             None

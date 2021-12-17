@@ -23,7 +23,7 @@ fn main() {
     schedule.run(&mut world, &mut resources);
 }
 
-use ecs::query::{Read, Write};
+use ecs::query::{Read, TryWrite};
 use ecs::system::{QuerySet, System};
 
 struct A;
@@ -33,7 +33,7 @@ struct B<'a>(Vec<&'a i32>);
 
 impl System for A {
     type Resources = ();
-    type Queries = ((Read<i32>, Write<i8>), (Entity, (Read<i32>, Read<&'static str>)));
+    type Queries = ((Read<i32>, TryWrite<i8>), (Entity, (Read<i32>, Read<&'static str>)));
 
     fn run(&mut self, (mut a, b): <Self::Queries as QuerySet>::Result, _: ()) {
         for (int, byte) in a.iter_mut() {

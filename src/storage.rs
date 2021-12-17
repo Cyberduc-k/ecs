@@ -60,23 +60,27 @@ impl<T: Component> ArchetypeStorage<T> {
     }
 
     pub fn get(&self, archetype: ArchetypeIndex) -> Option<&T::Storage> {
-        let index = self.index[archetype.0 as usize];
-        self.data.get(index)
+        self.index.get(archetype.0 as usize).and_then(|&index| {
+            self.data.get(index)
+        })
     }
 
     pub fn get_mut(&mut self, archetype: ArchetypeIndex) -> Option<&mut T::Storage> {
-        let index = self.index[archetype.0 as usize];
-        self.data.get_mut(index)
+        self.index.get(archetype.0 as usize).copied().and_then(move |index| {
+            self.data.get_mut(index)
+        })
     }
 
     pub unsafe fn get_mut_unchecked(&self, archetype: ArchetypeIndex) -> Option<&mut T::Storage> {
-        let index = self.index[archetype.0 as usize];
-        std::mem::transmute(self.data.get(index))
+        self.index.get(archetype.0 as usize).and_then(|&index| {
+            std::mem::transmute(self.data.get(index))
+        })
     }
 
     pub fn extend<I: IntoIterator<Item = T>>(&mut self, archetype: ArchetypeIndex, items: I) {
-        let index = self.index[archetype.0 as usize];
-        self.data[index].extend(items);
+        if let Some(&index) = self.index.get(archetype.0 as usize) {
+            self.data[index].extend(items);
+        }
     }
 }
 

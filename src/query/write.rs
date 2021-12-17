@@ -1,5 +1,5 @@
 use super::*;
-use crate::filter::ComponentFilter;
+use crate::filter::Component as ComponentFilter;
 use crate::resource::Write;
 
 pub enum WriteIter<'a, T: Component> {
@@ -22,7 +22,6 @@ impl<T: Component> IntoQuery for Write<T> {
 impl<'a, T: Component> Fetch<'a> for Write<T> {
     type Item = &'a mut T;
     type Iter = WriteIter<'a, T>;
-    type Filter = ComponentFilter<T>;
 
     fn fetch(components: &'a Components, _: &'a [Archetype], index: &'a [ArchetypeIndex]) -> Self::Iter {
         match components.get::<T>() {
@@ -36,10 +35,8 @@ impl<'a, T: Component> Fetch<'a> for Write<T> {
     }
 }
 
-impl<T: Component> ComponentTypes for Write<T> {
-    fn components() -> Vec<TypeId> {
-        vec![TypeId::of::<T>()]
-    }
+impl<T: Component> FetchFilter for Write<T> {
+    type Layout = ComponentFilter<T>;
 }
 
 impl<'a, T: Component> Iterator for WriteIter<'a, T> {

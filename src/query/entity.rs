@@ -1,5 +1,5 @@
 use crate::entity::Entity;
-use crate::filter::AnyFilter;
+use crate::filter::Any;
 use super::*;
 
 pub struct EntityIter<'a> {
@@ -15,7 +15,6 @@ impl IntoQuery for Entity {
 impl<'a> Fetch<'a> for Entity {
     type Item = Entity;
     type Iter = EntityIter<'a>;
-    type Filter = AnyFilter;
 
     fn fetch(_: &'a Components, archetypes: &'a [Archetype], index: &'a [ArchetypeIndex]) -> Self::Iter {
         EntityIter {
@@ -28,10 +27,8 @@ impl<'a> Fetch<'a> for Entity {
 
 impl Readonly for Entity {}
 
-impl ComponentTypes for Entity {
-    fn components() -> Vec<TypeId> {
-        Vec::new()
-    }
+impl FetchFilter for Entity {
+    type Layout = Any;
 }
 
 impl<'a> Iterator for EntityIter<'a> {

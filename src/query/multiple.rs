@@ -1,4 +1,5 @@
 use super::*;
+use crate::filter::And;
 
 pub struct Multiple<T>(T);
 pub struct MultiIter<T>(T);
@@ -27,12 +28,8 @@ macro_rules! impl_multi {
 
         impl<$($ty: Readonly),+> Readonly for Multiple<($($ty,)+)> {}
 
-        impl<'a, $($ty: Fetch<'a>),+> ComponentTypes for Multiple<($($ty,)+)> {
-            fn components() -> Vec<TypeId> {
-                let mut result = Vec::new();
-                $(result.append(&mut $ty::components());)*
-                result
-            }
+        impl<'a, $($ty: Fetch<'a>),+> FetchFilter for Multiple<($($ty,)+)> {
+            type Layout = And<($($ty::Layout,)*)>;
         }
     };
 }
