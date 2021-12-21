@@ -1,4 +1,6 @@
-use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
+pub use atomic_refcell::{AtomicRef, AtomicRefMut};
+
+use atomic_refcell::AtomicRefCell;
 use std::{
     any::{type_name, Any, TypeId},
     collections::HashMap,
